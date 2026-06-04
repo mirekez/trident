@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trident IDE</title>
+  <link rel="stylesheet" href="/styles.css?v=3">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>Trident IDE</h1>
+        <p>Project manager</p>
+      </div>
+      <div class="connection" id="connection">Ready</div>
+    </header>
+
+    <section class="desktop" id="desktop" aria-label="Internal windows">
+      <div class="launch-panel" id="launch-panel">
+        <div class="launch-title">RPC test calls</div>
+        <div class="launch-buttons" id="launch-buttons">Loading buttons...</div>
+      </div>
+    </section>
+  </main>
+
+  <template id="window-template">
+    <article class="internal-window">
+      <header class="window-titlebar">
+        <h2></h2>
+        <button type="button" class="close-button" aria-label="Close window">x</button>
+      </header>
+      <div class="window-content"></div>
+    </article>
+  </template>
+
+  <script type="module" src="/app.js?v=3"></script>
+</body>
+</html>
