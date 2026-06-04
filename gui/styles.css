@@ -128,6 +128,11 @@ button {
   z-index: 2;
 }
 
+.internal-window.editor-window {
+  width: min(960px, calc(100vw - 32px));
+  min-height: 560px;
+}
+
 .window-titlebar {
   display: flex;
   justify-content: space-between;
@@ -155,6 +160,10 @@ button {
 
 .window-content {
   padding: 16px;
+}
+
+.editor-window .window-content {
+  padding: 0;
 }
 
 .stack {
@@ -226,6 +235,106 @@ button {
   white-space: pre-wrap;
 }
 
+.code-editor {
+  display: grid;
+  grid-template-rows: 36px 1fr;
+  height: 518px;
+  min-height: 360px;
+  background: #101820;
+  color: #d8e2ea;
+}
+
+.code-editor-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid #263746;
+  background: #162330;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.code-editor-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f0f5f8;
+}
+
+.code-editor-stats {
+  flex: 0 0 auto;
+  color: #8fa2b2;
+}
+
+.code-editor-scroller {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #101820;
+}
+
+.code-editor-highlight,
+.code-editor-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 14px 16px;
+  border: 0;
+  tab-size: 4;
+  white-space: pre;
+  overflow: auto;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0;
+}
+
+.code-editor-highlight {
+  pointer-events: none;
+  color: #d8e2ea;
+}
+
+.code-editor-input {
+  z-index: 1;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: #ffffff;
+  scrollbar-color: #63788a #101820;
+}
+
+.code-editor-input::selection {
+  background: rgba(88, 166, 255, 0.34);
+}
+
+.tok-keyword {
+  color: #7dcfff;
+  font-weight: 650;
+}
+
+.tok-type {
+  color: #9ece6a;
+}
+
+.tok-string {
+  color: #e0af68;
+}
+
+.tok-number {
+  color: #ff9e64;
+}
+
+.tok-comment {
+  color: #8292a2;
+  font-style: italic;
+}
+
+.tok-preproc {
+  color: #bb9af7;
+}
+
 @media (max-width: 620px) {
   .topbar {
     align-items: flex-start;
@@ -243,5 +352,13 @@ button {
 
   .rpc-launch-button {
     flex: 1 1 120px;
+  }
+
+  .internal-window.editor-window {
+    min-height: 460px;
+  }
+
+  .code-editor {
+    height: 418px;
   }
 }

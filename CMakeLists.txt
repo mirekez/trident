@@ -36,9 +36,11 @@ set(BACKEND_SOURCES
     backend/RPCStatus.cpp
     backend/RPCMetrics.cpp
     backend/RPCPicture.cpp
+    backend/RPCLoadFile.cpp
     backend/tests/RPCStatusTest.cpp
     backend/tests/RPCMetricsTest.cpp
     backend/tests/RPCPictureTest.cpp
+    backend/tests/RPCLoadFileTest.cpp
 )
 
 add_library(trident_backend_lib ${BACKEND_SOURCES})
@@ -61,7 +63,7 @@ add_test(NAME trident_backend_tests COMMAND trident_backend_tests)
 
 add_custom_target(gui
     COMMAND ${CMAKE_COMMAND} -E echo "GUI is plain JavaScript in ${CMAKE_SOURCE_DIR}/gui and is served by trident_backend."
-    SOURCES gui/index.html gui/app.js gui/styles.css gui/package.json
+    SOURCES gui/index.html gui/app.js gui/CodeEditor.js gui/styles.css gui/package.json
 )
 
 add_subdirectory(tools)

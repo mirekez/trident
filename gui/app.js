@@ -1,3 +1,5 @@
+import { CodeEditor } from './CodeEditor.js';
+
 const desktop = document.querySelector('#desktop');
 const launchButtons = document.querySelector('#launch-buttons');
 const template = document.querySelector('#window-template');
@@ -21,6 +23,13 @@ const rpcConfig = {
     buttonLabel: 'Open Picture RPC',
     endpoint: '/rpc/picture',
     render: renderPicture
+  },
+  loadFile: {
+    title: 'Code Editor',
+    buttonLabel: 'Open Code Editor',
+    endpoint: '/rpc/load-file',
+    windowClass: 'editor-window',
+    render: renderCodeEditor
   }
 };
 
@@ -62,6 +71,9 @@ async function createWindow(key) {
   const content = node.querySelector('.window-content');
   const close = node.querySelector('.close-button');
 
+  if (config.windowClass) {
+    node.classList.add(config.windowClass);
+  }
   title.textContent = config.title;
   content.innerHTML = '<div class="loading">Loading RPC response...</div>';
   node.style.left = `${32 + nextOffset}px`;
@@ -83,7 +95,9 @@ async function createWindow(key) {
       throw new Error(`RPC failed with HTTP ${response.status}`);
     }
     const payload = await response.json();
-    content.replaceChildren(config.render(payload));
+    const rendered = config.render(payload);
+    content.replaceChildren(rendered.element || rendered);
+    rendered.afterAttach?.();
     connection.textContent = 'Ready';
   } catch (error) {
     content.replaceChildren(renderError(error));
@@ -135,6 +149,18 @@ function renderPicture(payload) {
   root.appendChild(img);
   root.appendChild(field('MIME', payload.mime));
   return root;
+}
+
+function renderCodeEditor(payload) {
+  const editor = new CodeEditor({
+    value: payload.content || '',
+    path: payload.path || payload.title || 'untitled',
+    language: payload.language || 'cpp'
+  });
+  return {
+    element: editor.element(),
+    afterAttach: () => editor.focus()
+  };
 }
 
 function field(label, value) {

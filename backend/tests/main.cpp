@@ -1,6 +1,7 @@
 #include "RPCMetricsTest.h"
 #include "RPCPictureTest.h"
 #include "RPCStatusTest.h"
+#include "RPCLoadFileTest.h"
 
 #include <iostream>
 
@@ -9,6 +10,7 @@ int main() {
     ok = RPCStatusTest::validate() && ok;
     ok = RPCMetricsTest::validate() && ok;
     ok = RPCPictureTest::validate() && ok;
+    ok = RPCLoadFileTest::validate() && ok;
 
     if (!ok) {
         std::cerr << "One or more RPC test payloads failed validation.\n";

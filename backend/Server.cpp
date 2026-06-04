@@ -3,6 +3,8 @@
 #include "RPCMetrics.h"
 #include "RPCPicture.h"
 #include "RPCStatus.h"
+#include "RPCLoadFile.h"
+#include "RPCLoadFileTest.h"
 #include "RPCMetricsTest.h"
 #include "RPCPictureTest.h"
 #include "RPCStatusTest.h"
@@ -117,10 +119,12 @@ Server::Server(unsigned short port, bool testMode, std::filesystem::path guiRoot
         rpcHandlers_.emplace("/rpc/status", &RPCStatusTest::sampleJson);
         rpcHandlers_.emplace("/rpc/metrics", &RPCMetricsTest::sampleJson);
         rpcHandlers_.emplace("/rpc/picture", &RPCPictureTest::sampleJson);
+        rpcHandlers_.emplace("/rpc/load-file", &RPCLoadFileTest::sampleJson);
     } else {
         rpcHandlers_.emplace("/rpc/status", &RPCStatus::handle);
         rpcHandlers_.emplace("/rpc/metrics", &RPCMetrics::handle);
         rpcHandlers_.emplace("/rpc/picture", &RPCPicture::handle);
+        rpcHandlers_.emplace("/rpc/load-file", &RPCLoadFile::handle);
     }
 }
 
