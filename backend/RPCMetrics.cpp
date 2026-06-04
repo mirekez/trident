@@ -1,11 +1,9 @@
 #include "RPCMetrics.h"
 
-#include "RPCMetricsTest.h"
-
 std::string RPCMetrics::name() {
     return "metrics";
 }
 
 std::string RPCMetrics::handle() {
-    return RPCMetricsTest::sampleJson();
+    return R"({"title":"Runtime Metrics","requestsToday":0,"latencyMs":[0,0,0,0,0],"activeUsers":0,"mode":"real"})";
 }

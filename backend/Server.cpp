@@ -3,6 +3,9 @@
 #include "RPCMetrics.h"
 #include "RPCPicture.h"
 #include "RPCStatus.h"
+#include "RPCMetricsTest.h"
+#include "RPCPictureTest.h"
+#include "RPCStatusTest.h"
 
 #include <array>
 #include <csignal>
@@ -108,11 +111,17 @@ public:
 
 } // namespace
 
-Server::Server(unsigned short port, std::filesystem::path guiRoot)
-    : port_(port), guiRoot_(std::move(guiRoot)) {
-    rpcHandlers_.emplace("/rpc/status", &RPCStatus::handle);
-    rpcHandlers_.emplace("/rpc/metrics", &RPCMetrics::handle);
-    rpcHandlers_.emplace("/rpc/picture", &RPCPicture::handle);
+Server::Server(unsigned short port, bool testMode, std::filesystem::path guiRoot)
+    : port_(port), testMode_(testMode), guiRoot_(std::move(guiRoot)) {
+    if (testMode_) {
+        rpcHandlers_.emplace("/rpc/status", &RPCStatusTest::sampleJson);
+        rpcHandlers_.emplace("/rpc/metrics", &RPCMetricsTest::sampleJson);
+        rpcHandlers_.emplace("/rpc/picture", &RPCPictureTest::sampleJson);
+    } else {
+        rpcHandlers_.emplace("/rpc/status", &RPCStatus::handle);
+        rpcHandlers_.emplace("/rpc/metrics", &RPCMetrics::handle);
+        rpcHandlers_.emplace("/rpc/picture", &RPCPicture::handle);
+    }
 }
 
 int Server::run() {
@@ -147,7 +156,11 @@ int Server::run() {
             return 1;
         }
 
-        std::cout << "Backend listening at http://127.0.0.1:" << port_ << "\n";
+        std::cout << "Backend listening at http://127.0.0.1:" << port_;
+        if (testMode_) {
+            std::cout << " in test RPC mode";
+        }
+        std::cout << "\n";
         while (keepRunning) {
             fd_set readSet;
             FD_ZERO(&readSet);

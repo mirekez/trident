@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <unordered_map>
 
@@ -11,13 +12,14 @@ public:
         std::string path;
     };
 
-    explicit Server(unsigned short port, std::filesystem::path guiRoot = "gui");
+    explicit Server(unsigned short port, bool testMode = false, std::filesystem::path guiRoot = "gui");
     int run();
 
 private:
     unsigned short port_;
+    bool testMode_;
     std::filesystem::path guiRoot_;
-    std::unordered_map<std::string, std::string (*)()> rpcHandlers_;
+    std::unordered_map<std::string, std::function<std::string()>> rpcHandlers_;
 
     std::string dispatch(const HttpRequest& request) const;
     std::string serveStatic(const std::string& requestPath) const;

@@ -44,7 +44,17 @@ bool openBrowser(const std::string& url) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const std::string port = argc > 1 ? argv[1] : "8080";
+    bool testMode = false;
+    std::string port = "8080";
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--test") {
+            testMode = true;
+        } else {
+            port = arg;
+        }
+    }
+
     const auto exeDir = std::filesystem::absolute(argv[0]).parent_path();
 #if defined(_WIN32)
     const auto backendExe = exeDir / "trident_backend.exe";
@@ -52,7 +62,11 @@ int main(int argc, char** argv) {
     const auto backendExe = exeDir / "trident_backend";
 #endif
 
-    const std::string command = quote(backendExe) + " " + port;
+    std::string command = quote(backendExe);
+    if (testMode) {
+        command += " --test";
+    }
+    command += " " + port;
     const std::string url = "http://127.0.0.1:" + port;
 
     std::thread([url]() {
@@ -63,6 +77,9 @@ int main(int argc, char** argv) {
     }).detach();
 
     std::cout << "Starting backend on " << url << "\n";
+    if (testMode) {
+        std::cout << "Using backend/test RPC implementations.\n";
+    }
     const int rc = std::system(command.c_str());
     if (rc != 0) {
         std::cerr << "Backend process exited with code " << rc << ".\n";
