@@ -2,6 +2,10 @@
 #include "RPCPictureTest.h"
 #include "RPCStatusTest.h"
 #include "RPCLoadFileTest.h"
+#include "RPCGetOpenedFileListTest.h"
+#include "RPCRefreshDevLogTest.h"
+#include "RPCExecBashCommandTest.h"
+#include "RPCRunBashCommandTest.h"
 
 #include <iostream>
 
@@ -11,6 +15,10 @@ int main() {
     ok = RPCMetricsTest::validate() && ok;
     ok = RPCPictureTest::validate() && ok;
     ok = RPCLoadFileTest::validate() && ok;
+    ok = RPCGetOpenedFileListTest::validate() && ok;
+    ok = RPCRefreshDevLogTest::validate() && ok;
+    ok = RPCExecBashCommandTest::validate() && ok;
+    ok = RPCRunBashCommandTest::validate() && ok;
 
     if (!ok) {
         std::cerr << "One or more RPC test payloads failed validation.\n";

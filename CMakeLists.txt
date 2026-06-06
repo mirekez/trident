@@ -33,14 +33,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(BACKEND_SOURCES
     backend/Server.cpp
+    backend/BashConsoleSession.cpp
+    backend/Project.cpp
     backend/RPCStatus.cpp
     backend/RPCMetrics.cpp
     backend/RPCPicture.cpp
     backend/RPCLoadFile.cpp
+    backend/RPCGetOpenedFileList.cpp
+    backend/RPCRefreshDevLog.cpp
+    backend/RPCExecBashCommand.cpp
+    backend/RPCRunBashCommand.cpp
     backend/tests/RPCStatusTest.cpp
     backend/tests/RPCMetricsTest.cpp
     backend/tests/RPCPictureTest.cpp
     backend/tests/RPCLoadFileTest.cpp
+    backend/tests/RPCGetOpenedFileListTest.cpp
+    backend/tests/RPCRefreshDevLogTest.cpp
+    backend/tests/RPCExecBashCommandTest.cpp
+    backend/tests/RPCRunBashCommandTest.cpp
 )
 
 add_library(trident_backend_lib ${BACKEND_SOURCES})
@@ -48,6 +58,8 @@ target_include_directories(trident_backend_lib PUBLIC backend backend/tests)
 
 if(WIN32)
     target_link_libraries(trident_backend_lib PUBLIC ws2_32)
+else()
+    target_link_libraries(trident_backend_lib PUBLIC util)
 endif()
 
 add_executable(trident_backend backend/main.cpp)
@@ -63,7 +75,7 @@ add_test(NAME trident_backend_tests COMMAND trident_backend_tests)
 
 add_custom_target(gui
     COMMAND ${CMAKE_COMMAND} -E echo "GUI is plain JavaScript in ${CMAKE_SOURCE_DIR}/gui and is served by trident_backend."
-    SOURCES gui/index.html gui/app.js gui/CodeEditor.js gui/styles.css gui/package.json
+    SOURCES gui/index.html gui/app.js gui/FocusedControl.js gui/CodeEditor.js gui/EditorTabs.js gui/Development.js gui/Console.js gui/PathSelector.js gui/OpenFile.js gui/styles.css gui/package.json
 )
 
 add_subdirectory(tools)

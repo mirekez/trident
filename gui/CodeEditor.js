@@ -1,3 +1,5 @@
+import { FocusedControl } from './FocusedControl.js';
+
 const KEYWORDS = new Set([
   'alignas', 'alignof', 'always_comb', 'and', 'asm', 'auto', 'begin', 'bool',
   'break', 'case', 'catch', 'char', 'class', 'const', 'constexpr', 'continue',
@@ -16,25 +18,18 @@ const TYPES = new Set([
   'uint64_t', 'size_t', 'std', 'string', 'array', 'vector'
 ]);
 
-export class CodeEditor {
+export class CodeEditor extends FocusedControl {
   constructor(options = {}) {
+    super({ parentControl: options.parentControl });
     this.value = options.value || '';
     this.path = options.path || 'untitled';
     this.language = options.language || 'cpp';
+    this.onChange = options.onChange || (() => {});
     this.pendingHighlight = 0;
 
     this.root = document.createElement('section');
     this.root.className = 'code-editor';
-
-    this.header = document.createElement('div');
-    this.header.className = 'code-editor-header';
-
-    this.fileName = document.createElement('span');
-    this.fileName.className = 'code-editor-path';
-    this.fileName.textContent = this.path;
-
-    this.stats = document.createElement('span');
-    this.stats.className = 'code-editor-stats';
+    this.attachFocusRoot(this.root);
 
     this.scroller = document.createElement('div');
     this.scroller.className = 'code-editor-scroller';
@@ -51,12 +46,12 @@ export class CodeEditor {
     this.textarea.value = this.value;
     this.textarea.setAttribute('aria-label', `${this.path} source editor`);
 
-    this.header.append(this.fileName, this.stats);
     this.scroller.append(this.highlight, this.textarea);
-    this.root.append(this.header, this.scroller);
+    this.root.append(this.scroller);
 
     this.textarea.addEventListener('input', () => {
       this.value = this.textarea.value;
+      this.onChange(this.value);
       this.scheduleHighlight();
     });
     this.textarea.addEventListener('scroll', () => this.syncScroll());
@@ -85,7 +80,6 @@ export class CodeEditor {
 
   renderHighlight() {
     this.highlight.innerHTML = highlightCode(this.textarea.value);
-    this.stats.textContent = `${lineCount(this.textarea.value)} lines`;
     this.syncScroll();
   }
 
@@ -106,7 +100,12 @@ export class CodeEditor {
     this.textarea.value = `${before}    ${after}`;
     this.textarea.selectionStart = this.textarea.selectionEnd = start + 4;
     this.value = this.textarea.value;
+    this.onChange(this.value);
     this.scheduleHighlight();
+  }
+
+  getValue() {
+    return this.textarea.value;
   }
 }
 
@@ -215,8 +214,4 @@ function isIdentStart(char) {
 
 function isIdentPart(char) {
   return /[A-Za-z0-9_]/.test(char);
-}
-
-function lineCount(text) {
-  return text.length === 0 ? 1 : text.split('\n').length;
 }

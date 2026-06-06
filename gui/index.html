@@ -4,23 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Trident IDE</title>
-  <link rel="stylesheet" href="/styles.css?v=4">
+  <link rel="stylesheet" href="/styles.css?v=10">
 </head>
 <body>
   <main class="app-shell">
-    <header class="topbar">
-      <div>
-        <h1>Trident IDE</h1>
-        <p>Project manager</p>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <div class="app-title">Trident IDE</div>
+        <div class="connection" id="connection">Ready</div>
       </div>
-      <div class="connection" id="connection">Ready</div>
-    </header>
-
-    <section class="desktop" id="desktop" aria-label="Internal windows">
       <div class="launch-panel" id="launch-panel">
         <div class="launch-title">RPC test calls</div>
         <div class="launch-buttons" id="launch-buttons">Loading buttons...</div>
       </div>
+    </aside>
+    <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize command panel"></div>
+    <section class="desktop" id="desktop" aria-label="Internal windows">
     </section>
   </main>
 
@@ -28,12 +27,15 @@
     <article class="internal-window">
       <header class="window-titlebar">
         <h2></h2>
-        <button type="button" class="close-button" aria-label="Close window">x</button>
+        <div class="window-actions">
+          <button type="button" class="maximize-button" aria-label="Maximize window" title="Maximize">[]</button>
+          <button type="button" class="close-button" aria-label="Close window" title="Close">x</button>
+        </div>
       </header>
       <div class="window-content"></div>
     </article>
   </template>
 
-  <script type="module" src="/app.js?v=4"></script>
+  <script type="module" src="/app.js?v=10"></script>
 </body>
 </html>

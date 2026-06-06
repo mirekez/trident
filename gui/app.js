@@ -1,11 +1,33 @@
-import { CodeEditor } from './CodeEditor.js';
+import { EditorTabs } from './EditorTabs.js';
+import { Development } from './Development.js';
+import { PathSelector } from './PathSelector.js';
+import { OpenFile } from './OpenFile.js';
 
 const desktop = document.querySelector('#desktop');
 const launchButtons = document.querySelector('#launch-buttons');
 const template = document.querySelector('#window-template');
 const connection = document.querySelector('#connection');
+const splitter = document.querySelector('#splitter');
 
 const rpcConfig = {
+  createProject: {
+    title: 'Create Project',
+    buttonLabel: 'Create project',
+    endpoint: '/rpc/list-folders',
+    windowClass: 'path-window',
+    render: (payload, node) => renderPathSelector(payload, node, 'create')
+  },
+  loadProject: {
+    title: 'Load Project',
+    buttonLabel: 'Load project',
+    endpoint: '/rpc/list-folders',
+    windowClass: 'path-window',
+    render: (payload, node) => renderPathSelector(payload, node, 'load')
+  },
+  saveProject: {
+    buttonLabel: 'Save project',
+    action: saveProject
+  },
   status: {
     title: 'Backend Status',
     buttonLabel: 'Open Status RPC',
@@ -29,14 +51,23 @@ const rpcConfig = {
     buttonLabel: 'Open Code Editor',
     endpoint: '/rpc/load-file',
     windowClass: 'editor-window',
-    render: renderCodeEditor
+    render: (payload) => renderEditorTabs(payload, '/rpc/load-file')
+  },
+  development: {
+    title: 'Development',
+    buttonLabel: 'Open Development',
+    endpoint: '/rpc/get-opened-file-list',
+    windowClass: 'development-window',
+    render: renderDevelopment
   }
 };
 
 let nextOffset = 0;
 let nextZIndex = 10;
+let activeDevelopment = null;
 
 createRpcButtons();
+enableSplitter();
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') {
@@ -44,6 +75,7 @@ document.addEventListener('keydown', (event) => {
   }
   const windows = [...desktop.querySelectorAll('.internal-window')];
   const topWindow = windows.sort((a, b) => Number(b.style.zIndex || 0) - Number(a.style.zIndex || 0))[0];
+  topWindow?._cleanup?.();
   topWindow?.remove();
 });
 
@@ -55,7 +87,13 @@ function createRpcButtons() {
     button.className = 'rpc-launch-button';
     button.dataset.window = key;
     button.textContent = config.buttonLabel;
-    button.addEventListener('click', () => createWindow(key));
+    button.addEventListener('click', () => {
+      if (config.action) {
+        config.action();
+      } else {
+        createWindow(key);
+      }
+    });
     launchButtons.appendChild(button);
   });
 }
@@ -70,6 +108,7 @@ async function createWindow(key) {
   const title = node.querySelector('h2');
   const content = node.querySelector('.window-content');
   const close = node.querySelector('.close-button');
+  const maximize = node.querySelector('.maximize-button');
 
   if (config.windowClass) {
     node.classList.add(config.windowClass);
@@ -81,7 +120,11 @@ async function createWindow(key) {
   node.style.zIndex = String(nextZIndex++);
   nextOffset = (nextOffset + 28) % 140;
 
-  close.addEventListener('click', () => node.remove());
+  close.addEventListener('click', () => {
+    node._cleanup?.();
+    node.remove();
+  });
+  maximize.addEventListener('click', () => toggleMaximized(node, maximize));
   node.addEventListener('pointerdown', () => {
     node.style.zIndex = String(nextZIndex++);
   });
@@ -90,12 +133,11 @@ async function createWindow(key) {
 
   try {
     connection.textContent = `Calling ${config.endpoint}`;
-    const response = await fetch(config.endpoint, { method: 'POST' });
-    if (!response.ok) {
-      throw new Error(`RPC failed with HTTP ${response.status}`);
+    const payload = await callRpc(config.endpoint);
+    const rendered = config.render(payload, node);
+    if (rendered.cleanup) {
+      node._cleanup = rendered.cleanup;
     }
-    const payload = await response.json();
-    const rendered = config.render(payload);
     content.replaceChildren(rendered.element || rendered);
     rendered.afterAttach?.();
     connection.textContent = 'Ready';
@@ -151,16 +193,142 @@ function renderPicture(payload) {
   return root;
 }
 
-function renderCodeEditor(payload) {
-  const editor = new CodeEditor({
-    value: payload.content || '',
-    path: payload.path || payload.title || 'untitled',
-    language: payload.language || 'cpp'
+function renderEditorTabs(payload, endpoint) {
+  const tabs = new EditorTabs({
+    endpoint,
+    fetchJson: callRpc,
+    onStatus: (message) => {
+      connection.textContent = message;
+    },
+    onOpenFileRequest: (tabs) => openFileWindow(tabs)
+  });
+  tabs.loadInitial(payload);
+  return {
+    element: tabs.element(),
+    afterAttach: () => tabs.focus()
+  };
+}
+
+function renderDevelopment(payload) {
+  const development = new Development({
+    fetchJson: callRpc,
+    onStatus: (message) => {
+      connection.textContent = message;
+    },
+    onOpenFileRequest: (tabs) => openFileWindow(tabs)
   });
   return {
-    element: editor.element(),
-    afterAttach: () => editor.focus()
+    element: development.element(),
+    cleanup: () => {
+      if (activeDevelopment === development) {
+        activeDevelopment = null;
+      }
+      development.destroy();
+    },
+    afterAttach: async () => {
+      activeDevelopment = development;
+      await development.loadInitial(payload);
+      development.focus();
+    }
   };
+}
+
+function renderPathSelector(payload, windowNode, mode) {
+  const selector = new PathSelector({
+    payload,
+    mode,
+    fetchJson: callRpc,
+    onStatus: (message) => {
+      connection.textContent = message;
+    },
+    onProjectCreated: (project) => {
+      connection.textContent = `Project: ${project.path}`;
+      if (mode === 'load') {
+        activeDevelopment?.refreshTabs();
+      }
+    },
+    onDone: () => {
+      windowNode.remove();
+    }
+  });
+  return selector.element();
+}
+
+async function saveProject() {
+  try {
+    connection.textContent = 'Checking editors';
+    await activeDevelopment?.saveModifiedEditors();
+    connection.textContent = 'Calling /rpc/save-project';
+    const payload = await callRpc('/rpc/save-project');
+    connection.textContent = `Saved: ${payload.project.path}`;
+  } catch (error) {
+    connection.textContent = error instanceof Error ? error.message : String(error);
+  }
+}
+
+async function openFileWindow(tabs) {
+  const node = template.content.firstElementChild.cloneNode(true);
+  node.classList.add('path-window');
+  node.querySelector('h2').textContent = 'Open File';
+  node.querySelector('.close-button').addEventListener('click', () => node.remove());
+  const maximize = node.querySelector('.maximize-button');
+  maximize.addEventListener('click', () => toggleMaximized(node, maximize));
+  node.addEventListener('pointerdown', () => {
+    node.style.zIndex = String(nextZIndex++);
+  });
+  makeDraggable(node);
+  node.style.left = `${32 + nextOffset}px`;
+  node.style.top = `${32 + nextOffset}px`;
+  node.style.zIndex = String(nextZIndex++);
+  nextOffset = (nextOffset + 28) % 140;
+  const content = node.querySelector('.window-content');
+  content.innerHTML = '<div class="loading">Loading project files...</div>';
+  desktop.appendChild(node);
+
+  try {
+    connection.textContent = 'Calling /rpc/list-project-files';
+    const payload = await callRpc('/rpc/list-project-files');
+    const picker = new OpenFile({
+      payload,
+      fetchJson: callRpc,
+      onStatus: (message) => {
+        connection.textContent = message;
+      },
+      onOpen: (filePayload) => {
+        tabs.addPayload(filePayload);
+        node.remove();
+      }
+    });
+    content.replaceChildren(picker.element());
+    connection.textContent = 'Ready';
+  } catch (error) {
+    content.replaceChildren(renderError(error));
+    connection.textContent = 'RPC error';
+  }
+}
+
+async function callRpc(endpoint, body = undefined) {
+  return callRpcWithBody(endpoint, body);
+}
+
+async function callRpcWithBody(endpoint, body = undefined) {
+  const options = { method: 'POST' };
+  if (body !== undefined) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(endpoint, options);
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const payload = await response.json();
+      detail = payload.error || payload.message || '';
+    } catch {
+      detail = await response.text().catch(() => '');
+    }
+    throw new Error(detail || `RPC failed with HTTP ${response.status}`);
+  }
+  return response.json();
 }
 
 function field(label, value) {
@@ -208,6 +376,9 @@ function makeDraggable(windowNode) {
     if (event.target.closest('button')) {
       return;
     }
+    if (windowNode.classList.contains('maximized')) {
+      return;
+    }
     dragging = true;
     startX = event.clientX;
     startY = event.clientY;
@@ -226,5 +397,45 @@ function makeDraggable(windowNode) {
 
   titlebar.addEventListener('pointerup', () => {
     dragging = false;
+  });
+}
+
+function toggleMaximized(windowNode, button) {
+  const maximized = windowNode.classList.toggle('maximized');
+  button.textContent = maximized ? '<>' : '[]';
+  button.title = maximized ? 'Restore' : 'Maximize';
+  button.setAttribute('aria-label', maximized ? 'Restore window' : 'Maximize window');
+
+  if (!maximized) {
+    windowNode.style.left = `${32 + nextOffset}px`;
+    windowNode.style.top = `${32 + nextOffset}px`;
+    nextOffset = (nextOffset + 28) % 140;
+  }
+
+  windowNode.style.zIndex = String(nextZIndex++);
+}
+
+function enableSplitter() {
+  let dragging = false;
+
+  splitter.addEventListener('pointerdown', (event) => {
+    dragging = true;
+    splitter.setPointerCapture(event.pointerId);
+    document.body.classList.add('resizing-layout');
+  });
+
+  splitter.addEventListener('pointermove', (event) => {
+    if (!dragging) {
+      return;
+    }
+    const minLeft = 120;
+    const maxLeft = Math.max(minLeft, window.innerWidth - 360);
+    const width = Math.min(maxLeft, Math.max(minLeft, event.clientX));
+    document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
+  });
+
+  splitter.addEventListener('pointerup', () => {
+    dragging = false;
+    document.body.classList.remove('resizing-layout');
   });
 }
