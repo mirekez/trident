@@ -34,6 +34,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(BACKEND_SOURCES
     backend/Server.cpp
     backend/BashConsoleSession.cpp
+    backend/CompilationFlow.cpp
     backend/Project.cpp
     backend/RPCStatus.cpp
     backend/RPCMetrics.cpp
@@ -65,6 +66,12 @@ endif()
 add_executable(trident_backend backend/main.cpp)
 target_link_libraries(trident_backend PRIVATE trident_backend_lib)
 
+add_custom_command(TARGET trident_backend POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/default_flow.json"
+        "$<TARGET_FILE_DIR:trident_backend>/default_flow.json"
+)
+
 add_executable(trident_backend_tests backend/tests/main.cpp)
 target_link_libraries(trident_backend_tests PRIVATE trident_backend_lib)
 
@@ -75,7 +82,7 @@ add_test(NAME trident_backend_tests COMMAND trident_backend_tests)
 
 add_custom_target(gui
     COMMAND ${CMAKE_COMMAND} -E echo "GUI is plain JavaScript in ${CMAKE_SOURCE_DIR}/gui and is served by trident_backend."
-    SOURCES gui/index.html gui/app.js gui/FocusedControl.js gui/CodeEditor.js gui/EditorTabs.js gui/Development.js gui/Console.js gui/PathSelector.js gui/OpenFile.js gui/styles.css gui/package.json
+    SOURCES gui/index.html gui/app.js gui/FocusedControl.js gui/CodeEditor.js gui/EditorTabs.js gui/Development.js gui/Console.js gui/PathSelector.js gui/OpenFile.js gui/ProjectOptions.js gui/styles.css gui/package.json
 )
 
 add_subdirectory(tools)

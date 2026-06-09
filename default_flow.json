@@ -1,0 +1,16 @@
+// Available variables:
+//   $(ToolsPath)    - build-local tools directory, normally build/tools/build-current
+//   $(ProjectPath)  - current Trident project directory
+//   $(CSourceList)  - shell-quoted C/C++ source and header files under the project
+//   $(SVSourceList) - shell-quoted Verilog/SystemVerilog files under the project
+//   ${TopModuleName} - top module name from project options
+{
+  "actions": {
+    "Compile": {
+      "command": "echo \"Compile project: $(ProjectPath)\"; echo \"Top module: ${TopModuleName}\"; echo \"Tools: $(ToolsPath)\"; echo \"C/C++ sources: $(CSourceList)\"; echo \"Verilog/SystemVerilog sources: $(SVSourceList)\"; if [ -x \"$(ToolsPath)/yosys/yosys\" ]; then \"$(ToolsPath)/yosys/yosys\" -V; else echo \"Yosys not built at $(ToolsPath)/yosys/yosys\"; fi"
+    },
+    "Build": {
+      "command": "echo \"Build project: $(ProjectPath)\"; echo \"Tools: $(ToolsPath)\"; echo \"C/C++ sources: $(CSourceList)\"; echo \"Verilog/SystemVerilog sources: $(SVSourceList)\""
+    }
+  }
+}

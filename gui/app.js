@@ -2,6 +2,7 @@ import { EditorTabs } from './EditorTabs.js';
 import { Development } from './Development.js';
 import { PathSelector } from './PathSelector.js';
 import { OpenFile } from './OpenFile.js';
+import { ProjectOptions } from './ProjectOptions.js';
 
 const desktop = document.querySelector('#desktop');
 const launchButtons = document.querySelector('#launch-buttons');
@@ -27,6 +28,13 @@ const rpcConfig = {
   saveProject: {
     buttonLabel: 'Save project',
     action: saveProject
+  },
+  projectOptions: {
+    title: 'Project Settings',
+    buttonLabel: 'Project settings',
+    endpoint: '/rpc/get-project-settings',
+    windowClass: 'project-options-window',
+    render: renderProjectOptions
   },
   status: {
     title: 'Backend Status',
@@ -65,6 +73,7 @@ const rpcConfig = {
 let nextOffset = 0;
 let nextZIndex = 10;
 let activeDevelopment = null;
+const openMainWindows = new Map();
 
 createRpcButtons();
 enableSplitter();
@@ -75,8 +84,7 @@ document.addEventListener('keydown', (event) => {
   }
   const windows = [...desktop.querySelectorAll('.internal-window')];
   const topWindow = windows.sort((a, b) => Number(b.style.zIndex || 0) - Number(a.style.zIndex || 0))[0];
-  topWindow?._cleanup?.();
-  topWindow?.remove();
+  closeWindow(topWindow);
 });
 
 function createRpcButtons() {
@@ -103,8 +111,16 @@ async function createWindow(key) {
   if (!config) {
     return;
   }
+  const existing = openMainWindows.get(key);
+  if (existing?.isConnected) {
+    existing.style.zIndex = String(nextZIndex++);
+    existing.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return;
+  }
+  openMainWindows.delete(key);
 
   const node = template.content.firstElementChild.cloneNode(true);
+  node.dataset.windowKey = key;
   const title = node.querySelector('h2');
   const content = node.querySelector('.window-content');
   const close = node.querySelector('.close-button');
@@ -119,10 +135,10 @@ async function createWindow(key) {
   node.style.top = `${32 + nextOffset}px`;
   node.style.zIndex = String(nextZIndex++);
   nextOffset = (nextOffset + 28) % 140;
+  openMainWindows.set(key, node);
 
   close.addEventListener('click', () => {
-    node._cleanup?.();
-    node.remove();
+    closeWindow(node);
   });
   maximize.addEventListener('click', () => toggleMaximized(node, maximize));
   node.addEventListener('pointerdown', () => {
@@ -145,6 +161,17 @@ async function createWindow(key) {
     content.replaceChildren(renderError(error));
     connection.textContent = 'RPC error';
   }
+}
+
+function closeWindow(node) {
+  if (!node) {
+    return;
+  }
+  node._cleanup?.();
+  if (node.dataset.windowKey) {
+    openMainWindows.delete(node.dataset.windowKey);
+  }
+  node.remove();
 }
 
 function renderStatus(payload) {
@@ -248,10 +275,24 @@ function renderPathSelector(payload, windowNode, mode) {
       }
     },
     onDone: () => {
-      windowNode.remove();
+      closeWindow(windowNode);
     }
   });
   return selector.element();
+}
+
+function renderProjectOptions(payload, windowNode) {
+  const options = new ProjectOptions({
+    payload,
+    fetchJson: callRpc,
+    onStatus: (message) => {
+      connection.textContent = message;
+    },
+    onDone: () => {
+      windowNode.remove();
+    }
+  });
+  return options.element();
 }
 
 async function saveProject() {

@@ -1,0 +1,19 @@
+#pragma once
+
+#include <filesystem>
+#include <string>
+#include <unordered_map>
+
+class CompilationFlow {
+public:
+    bool load(const std::filesystem::path& path);
+    bool loaded() const;
+    const std::filesystem::path& sourcePath() const;
+    std::string execute(const std::string& action,
+                        const std::filesystem::path& projectPath,
+                        const std::string& topModuleName) const;
+
+private:
+    std::filesystem::path sourcePath_;
+    std::unordered_map<std::string, std::string> commands_;
+};

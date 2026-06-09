@@ -157,6 +157,11 @@ button {
   min-height: 470px;
 }
 
+.internal-window.project-options-window {
+  width: min(560px, calc(100% - 32px));
+  min-height: 280px;
+}
+
 .internal-window.maximized {
   left: 0 !important;
   top: 0 !important;
@@ -213,6 +218,10 @@ button {
 }
 
 .path-window .window-content {
+  padding: 0;
+}
+
+.project-options-window .window-content {
   padding: 0;
 }
 
@@ -379,6 +388,79 @@ button {
   padding-left: 20px;
 }
 
+.project-options {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 238px;
+  background: #ffffff;
+}
+
+.project-options-message {
+  padding: 12px 14px;
+  border-bottom: 1px solid #d9e1e8;
+  background: #f8fafb;
+  color: #20313f;
+}
+
+.project-options-fields {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+}
+
+.project-options-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.project-options-row span {
+  color: #607080;
+  font-size: 13px;
+}
+
+.project-options-row input,
+.project-options-readonly {
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+  color: #17202a;
+  background: #ffffff;
+}
+
+.project-options-readonly {
+  overflow-wrap: anywhere;
+  background: #f1f5f8;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.project-options-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid #e5ebf0;
+}
+
+.project-options-actions button {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+  cursor: pointer;
+}
+
+.project-options-actions button:hover {
+  background: #eaf4f1;
+  border-color: #27a98d;
+}
+
 .bar-chart {
   display: flex;
   align-items: end;
@@ -434,6 +516,47 @@ button {
   background: #101820;
   color: #d8e2ea;
   overflow: hidden;
+}
+
+.development-toolbar {
+  flex: 0 0 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #263746;
+  background: #172330;
+}
+
+.development-tool-button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #415568;
+  border-radius: 4px;
+  background: #20313f;
+  color: #d8e2ea;
+  cursor: pointer;
+}
+
+.development-tool-button:hover {
+  background: #2b465c;
+  border-color: #6aa6c8;
+}
+
+.development-toolbar-spacer {
+  width: 14px;
+}
+
+.development-tool-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
 }
 
 .development.focused-control {

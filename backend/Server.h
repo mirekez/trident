@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #include "BashConsoleSession.h"
+#include "CompilationFlow.h"
 #include "Project.h"
 
 class Server {
@@ -29,11 +30,13 @@ private:
 
     std::unique_ptr<Project> project_;
     BashConsoleSession bashConsole_;
+    CompilationFlow compilationFlow_;
 
     void handleClient(std::intptr_t client);
     void streamBashConsole(std::intptr_t client);
     std::string dispatch(const HttpRequest& request);
     std::string handleProjectRpc(const HttpRequest& request);
+    std::string handleCompileRpc();
     std::filesystem::path projectRoot() const;
     std::string serveStatic(const std::string& requestPath) const;
     std::string jsonResponse(int status, const std::string& body) const;

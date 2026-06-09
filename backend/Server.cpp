@@ -329,6 +329,22 @@ std::string projectFileListJson(const std::filesystem::path& root, const std::fi
     return json.str();
 }
 
+std::filesystem::path findDefaultFlowPath() {
+    std::error_code error;
+    const auto cwd = std::filesystem::current_path(error);
+    const std::array candidates = {
+        cwd / "default_flow.json",
+        cwd / "build" / "default_flow.json",
+        cwd.parent_path() / "default_flow.json"
+    };
+    for (const auto& candidate : candidates) {
+        if (std::filesystem::exists(candidate, error)) {
+            return candidate;
+        }
+    }
+    return cwd / "default_flow.json";
+}
+
 Server::HttpRequest parseRequest(const std::string& raw) {
     std::istringstream stream(raw);
     Server::HttpRequest request;
@@ -369,6 +385,11 @@ public:
 
 Server::Server(unsigned short port, bool testMode, std::filesystem::path guiRoot)
     : port_(port), testMode_(testMode), guiRoot_(std::move(guiRoot)) {
+    const auto flowPath = findDefaultFlowPath();
+    if (!compilationFlow_.load(flowPath)) {
+        std::cerr << "Warning: failed to load compilation flow from " << flowPath << "\n";
+    }
+
     if (testMode_) {
         rpcHandlers_.emplace("/rpc/status", &RPCStatusTest::sampleJson);
         rpcHandlers_.emplace("/rpc/metrics", &RPCMetricsTest::sampleJson);
@@ -531,11 +552,16 @@ std::string Server::dispatch(const HttpRequest& request) {
         bashConsole_.stop();
         return jsonResponse(200, R"({"stopped":true})");
     }
+    if (request.path == "/rpc/compile") {
+        return handleCompileRpc();
+    }
     if (request.path == "/rpc/list-folders" ||
         request.path == "/rpc/create-folder" ||
         request.path == "/rpc/create-project" ||
         request.path == "/rpc/load-project" ||
         request.path == "/rpc/save-project" ||
+        request.path == "/rpc/get-project-settings" ||
+        request.path == "/rpc/save-project-settings" ||
         request.path == "/rpc/get-current-project-dir" ||
         request.path == "/rpc/get-opened-file-list" ||
         request.path == "/rpc/update-development-tabs" ||
@@ -552,6 +578,16 @@ std::string Server::dispatch(const HttpRequest& request) {
     }
 
     return serveStatic(request.path);
+}
+
+std::string Server::handleCompileRpc() {
+    if (!compilationFlow_.loaded()) {
+        return jsonResponse(500, R"({"error":"flow_not_loaded"})");
+    }
+    return jsonResponse(200, compilationFlow_.execute(
+        "Compile",
+        projectRoot(),
+        project_ ? project_->topModuleName : std::string("top")));
 }
 
 std::string Server::handleProjectRpc(const HttpRequest& request) {
@@ -615,6 +651,25 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
             return jsonResponse(500, R"({"error":"save_project_failed"})");
         }
         return jsonResponse(200, "{\"project\":" + project_->toJson() + ",\"saved\":true}");
+    }
+
+    if (request.path == "/rpc/get-project-settings") {
+        if (!project_) {
+            return jsonResponse(500, R"({"error":"no_project"})");
+        }
+        return jsonResponse(200, "{\"settings\":" + project_->toJson() + "}");
+    }
+
+    if (request.path == "/rpc/save-project-settings") {
+        if (!project_) {
+            return jsonResponse(500, R"({"error":"no_project"})");
+        }
+        const auto topModuleName = jsonStringValue(request.body, "topModuleName");
+        project_->topModuleName = topModuleName.empty() ? "top" : topModuleName;
+        if (!project_->save()) {
+            return jsonResponse(500, R"({"error":"save_project_failed"})");
+        }
+        return jsonResponse(200, "{\"settings\":" + project_->toJson() + ",\"saved\":true}");
     }
 
     if (request.path == "/rpc/get-current-project-dir") {
