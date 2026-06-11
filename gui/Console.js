@@ -18,6 +18,12 @@ export class Console extends FocusedControl {
     this.cursorRow = 0;
     this.cursorCol = 0;
     this.savedCursor = { row: 0, col: 0 };
+    this.handleDocumentClick = () => this.hideContextMenu();
+    this.handleDocumentKeydown = (event) => {
+      if (event.key === 'Escape') {
+        this.hideContextMenu();
+      }
+    };
 
     this.root = document.createElement('section');
     this.root.className = 'console interactive-console';
@@ -30,15 +36,22 @@ export class Console extends FocusedControl {
     this.outputText = document.createTextNode('');
     this.output.appendChild(this.outputText);
 
+    this.menu = this.createContextMenu();
+    this.root.appendChild(this.menu);
+
     this.root.appendChild(this.output);
 
     this.output.addEventListener('keydown', (event) => this.handleKeydown(event));
     this.output.addEventListener('paste', (event) => this.handlePaste(event));
+    this.output.addEventListener('contextmenu', (event) => this.showContextMenu(event));
     this.root.addEventListener('click', (event) => {
+      this.hideContextMenu();
       if (!event.target.closest('.console-output')) {
         this.focus();
       }
     });
+    document.addEventListener('click', this.handleDocumentClick);
+    document.addEventListener('keydown', this.handleDocumentKeydown);
 
     this.startStream();
   }
@@ -56,6 +69,8 @@ export class Console extends FocusedControl {
   }
 
   destroy() {
+    document.removeEventListener('click', this.handleDocumentClick);
+    document.removeEventListener('keydown', this.handleDocumentKeydown);
     this.abort.abort();
     this.fetchJson(STOP_ENDPOINT).catch(() => {});
   }
@@ -91,6 +106,14 @@ export class Console extends FocusedControl {
   }
 
   async handleKeydown(event) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && hasSelectionInside(this.output)) {
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+      event.preventDefault();
+      await this.pasteFromClipboard();
+      return;
+    }
     if (event.ctrlKey && event.key.toLowerCase() === 'c') {
       event.preventDefault();
       await this.sendInput('\x03');
@@ -175,6 +198,72 @@ export class Console extends FocusedControl {
     }
   }
 
+  createContextMenu() {
+    const menu = document.createElement('div');
+    menu.className = 'console-context-menu';
+
+    const copy = this.menuButton('Copy', async () => {
+      await this.copySelection();
+      this.hideContextMenu();
+    });
+    const paste = this.menuButton('Paste', async () => {
+      await this.pasteFromClipboard();
+      this.hideContextMenu();
+      this.focus();
+    });
+
+    menu.append(copy, paste);
+    return menu;
+  }
+
+  menuButton(label, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
+
+  showContextMenu(event) {
+    event.preventDefault();
+    this.focus();
+    const bounds = this.root.getBoundingClientRect();
+    this.menu.style.left = `${event.clientX - bounds.left}px`;
+    this.menu.style.top = `${event.clientY - bounds.top}px`;
+    this.menu.classList.add('visible');
+  }
+
+  hideContextMenu() {
+    this.menu.classList.remove('visible');
+  }
+
+  async copySelection() {
+    const selection = window.getSelection();
+    const text = hasSelectionInside(this.output) ? selection.toString() : this.outputText.data;
+    if (!text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      document.execCommand('copy');
+    }
+  }
+
+  async pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        await this.sendInput(text.replace(/\r?\n/g, '\r'));
+      }
+    } catch (error) {
+      this.onStatus('Clipboard paste unavailable');
+    }
+  }
+
   async sendInput(input) {
     try {
       await this.fetchJson(INPUT_ENDPOINT, { input });
@@ -222,6 +311,10 @@ export class Console extends FocusedControl {
   writeChar(ch) {
     if (ch === '\r') {
       this.cursorCol = 0;
+      return;
+    }
+    if (ch === '\b') {
+      this.cursorCol = Math.max(0, this.cursorCol - 1);
       return;
     }
     if (ch === '\n') {
@@ -295,6 +388,27 @@ export class Console extends FocusedControl {
     if (command === 'J') {
       this.clearScreen(Number(params[0] || 0));
     }
+    if (command === 'P') {
+      this.deleteChars(n(0, 1));
+    }
+    if (command === '@') {
+      this.insertSpaces(n(0, 1));
+    }
+  }
+
+  deleteChars(count) {
+    const line = this.screen[this.cursorRow].split('');
+    line.splice(this.cursorCol, count);
+    while (line.length < this.cols) {
+      line.push(' ');
+    }
+    this.screen[this.cursorRow] = line.slice(0, this.cols).join('');
+  }
+
+  insertSpaces(count) {
+    const line = this.screen[this.cursorRow].split('');
+    line.splice(this.cursorCol, 0, ...Array.from({ length: count }, () => ' '));
+    this.screen[this.cursorRow] = line.slice(0, this.cols).join('');
   }
 
   clearLine(mode) {
@@ -364,6 +478,10 @@ function isSelectionOutside(node) {
   }
   const range = selection.getRangeAt(0);
   return !node.contains(range.commonAncestorContainer);
+}
+
+function hasSelectionInside(node) {
+  return !isSelectionOutside(node);
 }
 
 function blankLine(cols) {

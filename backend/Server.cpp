@@ -18,12 +18,14 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <vector>
 #include <utility>
@@ -65,6 +67,7 @@ std::string reasonPhrase(int status) {
     case 204: return "No Content";
     case 404: return "Not Found";
     case 405: return "Method Not Allowed";
+    case 409: return "Conflict";
     case 500: return "Internal Server Error";
     default: return "Unknown";
     }
@@ -181,6 +184,10 @@ std::string jsonStringValue(const std::string& body, const std::string& key) {
     return value;
 }
 
+bool jsonHasKey(const std::string& body, const std::string& key) {
+    return body.find("\"" + key + "\"") != std::string::npos;
+}
+
 bool jsonBoolValue(const std::string& body, const std::string& key) {
     const auto keyPos = body.find("\"" + key + "\"");
     if (keyPos == std::string::npos) {
@@ -192,6 +199,96 @@ bool jsonBoolValue(const std::string& body, const std::string& key) {
     }
     const auto valueStart = body.find_first_not_of(" \t\r\n", colon + 1);
     return valueStart != std::string::npos && body.compare(valueStart, 4, "true") == 0;
+}
+
+std::string shellQuote(const std::string& value) {
+    std::string quoted = "'";
+    for (const char ch : value) {
+        quoted += ch == '\'' ? "'\\''" : std::string(1, ch);
+    }
+    quoted += "'";
+    return quoted;
+}
+
+std::string normalizedProjectName(std::string name) {
+    constexpr std::string_view suffix = ".trident";
+    if (name.size() > suffix.size() && name.ends_with(suffix)) {
+        name.erase(name.size() - suffix.size());
+    }
+    return name;
+}
+
+bool validProjectName(const std::string& name) {
+    return !name.empty() &&
+           name != "." &&
+           name != ".." &&
+           name.find('/') == std::string::npos &&
+           name.find('\\') == std::string::npos;
+}
+
+std::filesystem::path projectArchivePath(const Project& project) {
+    return project.path / (project.projectName + ".trident");
+}
+
+bool archiveProject(Project& project, bool overwrite, std::string* message = nullptr) {
+    if (!validProjectName(project.projectName)) {
+        if (message) *message = "project_name_required";
+        return false;
+    }
+    if (!project.save()) {
+        if (message) *message = "save_project_failed";
+        return false;
+    }
+
+    std::error_code error;
+    const auto archive = projectArchivePath(project);
+    if (std::filesystem::exists(archive, error) && !overwrite) {
+        if (message) *message = "archive_exists";
+        return false;
+    }
+
+    const auto command = "tar -cf " + shellQuote(archive.string()) +
+                         " -C " + shellQuote(project.path.string()) + " .trident";
+    const int rc = std::system(command.c_str());
+    if (rc != 0) {
+        if (message) *message = "archive_project_failed";
+        return false;
+    }
+    return true;
+}
+
+bool extractProjectArchive(const std::filesystem::path& archive, Project& project, std::string* message = nullptr) {
+    std::error_code error;
+    auto archivePath = std::filesystem::weakly_canonical(archive, error);
+    if (error || !std::filesystem::is_regular_file(archivePath, error) || archivePath.extension() != ".trident") {
+        if (message) *message = "not_project_archive";
+        return false;
+    }
+
+    const auto projectPath = archivePath.parent_path();
+    std::filesystem::remove_all(projectPath / ".trident", error);
+    if (error) {
+        if (message) *message = "remove_existing_project_failed";
+        return false;
+    }
+
+    const auto command = "tar -xf " + shellQuote(archivePath.string()) +
+                         " -C " + shellQuote(projectPath.string());
+    const int rc = std::system(command.c_str());
+    if (rc != 0) {
+        if (message) *message = "extract_project_failed";
+        return false;
+    }
+
+    auto loaded = Project(projectPath);
+    if (!Project::load(projectPath, loaded)) {
+        if (message) *message = "load_project_failed";
+        return false;
+    }
+    loaded.projectName = archivePath.stem().string();
+    loaded.save();
+    project = std::move(loaded);
+    return true;
 }
 
 std::filesystem::path requestPathOrCurrent(const std::string& body) {
@@ -329,6 +426,58 @@ std::string projectFileListJson(const std::filesystem::path& root, const std::fi
     return json.str();
 }
 
+std::string filesystemListJson(const std::filesystem::path& root, const std::filesystem::path& path) {
+    struct Item {
+        std::filesystem::path path;
+        bool directory = false;
+        std::uintmax_t size = 0;
+    };
+
+    std::vector<Item> folders;
+    std::vector<Item> files;
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(path, error)) {
+        if (error) {
+            break;
+        }
+        const auto name = entry.path().filename().string();
+        if (name.starts_with(".")) {
+            continue;
+        }
+        if (entry.is_directory(error)) {
+            folders.push_back({entry.path(), true, 0});
+        } else if (entry.is_regular_file(error)) {
+            files.push_back({entry.path(), false, entry.file_size(error)});
+        }
+    }
+    const auto byPath = [](const Item& lhs, const Item& rhs) { return lhs.path < rhs.path; };
+    std::sort(folders.begin(), folders.end(), byPath);
+    std::sort(files.begin(), files.end(), byPath);
+
+    std::ostringstream json;
+    json << "{\"root\":\"" << jsonEscape(root.string()) << "\",\"path\":\"" << jsonEscape(path.string())
+         << "\",\"parent\":\"" << jsonEscape((path == root ? root : path.parent_path()).string()) << "\",\"items\":[";
+    bool first = true;
+    const auto writeItem = [&](const Item& item) {
+        if (!first) {
+            json << ',';
+        }
+        first = false;
+        json << "{\"name\":\"" << jsonEscape(item.path.filename().string())
+             << "\",\"path\":\"" << jsonEscape(item.path.string())
+             << "\",\"kind\":\"" << (item.directory ? "folder" : "file")
+             << "\",\"size\":" << item.size << "}";
+    };
+    for (const auto& folder : folders) {
+        writeItem(folder);
+    }
+    for (const auto& file : files) {
+        writeItem(file);
+    }
+    json << "]}";
+    return json.str();
+}
+
 std::filesystem::path findDefaultFlowPath() {
     std::error_code error;
     const auto cwd = std::filesystem::current_path(error);
@@ -343,6 +492,74 @@ std::filesystem::path findDefaultFlowPath() {
         }
     }
     return cwd / "default_flow.json";
+}
+
+struct PushCommand {
+    std::filesystem::path path;
+    std::uint64_t id = 0;
+    std::string json;
+};
+
+std::uint64_t pushCommandId(const std::string& name, std::string_view prefix) {
+    constexpr std::string_view suffix = ".json";
+    if (!name.starts_with(prefix) || !name.ends_with(suffix)) {
+        return 0;
+    }
+    const auto idText = name.substr(prefix.size(), name.size() - prefix.size() - suffix.size());
+    try {
+        return std::stoull(idText);
+    } catch (...) {
+        return 0;
+    }
+}
+
+std::vector<PushCommand> pendingPushCommands(const std::filesystem::path& pushRoot) {
+    std::vector<PushCommand> commands;
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(pushRoot, error)) {
+        if (error) {
+            break;
+        }
+        if (!entry.is_regular_file(error)) {
+            continue;
+        }
+        const auto name = entry.path().filename().string();
+        const auto body = readFile(entry.path());
+
+        if (const auto id = pushCommandId(name, "pushSource_"); id != 0) {
+            const auto filename = jsonStringValue(body, "filename");
+            if (filename.empty()) {
+                std::filesystem::remove(entry.path(), error);
+                continue;
+            }
+            commands.push_back({
+                entry.path(),
+                id,
+                "{\"action\":\"pushSource\",\"filename\":\"" + jsonEscape(filename) + "\"}\n"
+            });
+            continue;
+        }
+
+        if (const auto id = pushCommandId(name, "pushProjectSettings_"); id != 0) {
+            commands.push_back({
+                entry.path(),
+                id,
+                "{\"action\":\"pushProjectSettings\",\"topModuleName\":\"" +
+                    jsonEscape(jsonStringValue(body, "topModuleName")) +
+                    "\",\"topModuleFile\":\"" +
+                    jsonEscape(jsonStringValue(body, "topModuleFile")) +
+                    "\",\"mainTestFile\":\"" +
+                    jsonEscape(jsonStringValue(body, "mainTestFile")) + "\"}\n"
+            });
+        }
+    }
+    std::sort(commands.begin(), commands.end(), [](const PushCommand& lhs, const PushCommand& rhs) {
+        if (lhs.id != rhs.id) {
+            return lhs.id < rhs.id;
+        }
+        return lhs.path.filename().string() < rhs.path.filename().string();
+    });
+    return commands;
 }
 
 Server::HttpRequest parseRequest(const std::string& raw) {
@@ -384,7 +601,10 @@ public:
 } // namespace
 
 Server::Server(unsigned short port, bool testMode, std::filesystem::path guiRoot)
-    : port_(port), testMode_(testMode), guiRoot_(std::move(guiRoot)) {
+    : port_(port),
+      testMode_(testMode),
+      guiRoot_(std::move(guiRoot)),
+      pushRoot_(std::filesystem::current_path() / ".push") {
     const auto flowPath = findDefaultFlowPath();
     if (!compilationFlow_.load(flowPath)) {
         std::cerr << "Warning: failed to load compilation flow from " << flowPath << "\n";
@@ -411,6 +631,14 @@ Server::Server(unsigned short port, bool testMode, std::filesystem::path guiRoot
 
 int Server::run() {
     try {
+        std::error_code pushError;
+        std::filesystem::create_directories(pushRoot_, pushError);
+        if (pushError) {
+            std::cerr << "Warning: failed to create push directory " << pushRoot_
+                      << ": " << pushError.message() << "\n";
+        }
+        writeAgentSkill(std::filesystem::current_path());
+
         WinsockSession winsock;
         std::signal(SIGINT, handleSignal);
         std::signal(SIGTERM, handleSignal);
@@ -449,6 +677,7 @@ int Server::run() {
             std::cout << " in test RPC mode";
         }
         std::cout << "\n";
+        std::cout << "GUI push directory: " << pushRoot_ << "\n";
         while (keepRunning) {
             fd_set readSet;
             FD_ZERO(&readSet);
@@ -500,12 +729,112 @@ void Server::handleClient(std::intptr_t rawClient) {
         const auto request = parseRequest(raw);
         if (request.path == "/rpc/bash-console-stream") {
             streamBashConsole(rawClient);
+        } else if (request.path == "/rpc/push-events") {
+            streamPushEvents(rawClient);
         } else {
             const auto response = dispatch(request);
             send(client, response.data(), static_cast<int>(response.size()), 0);
         }
     }
     closeSocket(client);
+}
+
+void Server::streamPushEvents(std::intptr_t rawClient) {
+    const auto client = static_cast<SocketHandle>(rawClient);
+    const std::string header =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/x-ndjson; charset=utf-8\r\n"
+        "Cache-Control: no-store\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Connection: close\r\n\r\n";
+    if (send(client, header.data(), static_cast<int>(header.size()), 0) <= 0) {
+        return;
+    }
+
+    while (keepRunning) {
+        const auto commands = pendingPushCommands(pushRoot_);
+        if (commands.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            continue;
+        }
+
+        for (const auto& command : commands) {
+            if (send(client, command.json.data(), static_cast<int>(command.json.size()), 0) <= 0) {
+                return;
+            }
+            std::error_code error;
+            std::filesystem::remove(command.path, error);
+        }
+    }
+}
+
+void Server::writeAgentSkill(const std::filesystem::path& root) const {
+    std::error_code error;
+    const auto agentsDir = root / ".agents";
+    std::filesystem::create_directories(agentsDir, error);
+    if (error) {
+        std::cerr << "Warning: failed to create agent directory " << agentsDir
+                  << ": " << error.message() << "\n";
+        return;
+    }
+
+    std::ofstream file(agentsDir / "SKILLS.md", std::ios::binary | std::ios::trunc);
+    if (!file) {
+        std::cerr << "Warning: failed to write " << (agentsDir / "SKILLS.md") << "\n";
+        return;
+    }
+
+    file
+        << "# Trident GUI Push Commands\n\n"
+        << "This project is written in cpphdl. Before editing project sources, read the cpphdl coding rules and headers in:\n\n"
+        << "```text\n"
+        << (compilationFlow_.toolsPath() / "cpphdl" / "include").string() << "\n"
+        << "```\n\n"
+        << "Backend variable values available to agents:\n\n"
+        << "```text\n"
+        << "$(BinDir)=" << pushRoot_.parent_path().string() << "\n"
+        << "$(ToolsPath)=" << compilationFlow_.toolsPath().string() << "\n"
+        << "cpphdl_tool=" << (compilationFlow_.toolsPath() / "cpphdl").string() << "\n"
+        << "```\n\n"
+        << "Use the backend push gateway to request GUI actions from scripts or agents.\n\n"
+        << "Current push folder:\n\n"
+        << "```text\n"
+        << pushRoot_.string() << "\n"
+        << "```\n\n"
+        << "Create one JSON command file in that folder. The backend consumes the file, streams the command to the GUI, and deletes the file after sending it.\n\n"
+        << "File naming:\n\n"
+        << "```text\n"
+        << "pushSource_<incremented_cmd_id>.json\n"
+        << "pushProjectSettings_<incremented_cmd_id>.json\n"
+        << "```\n\n"
+        << "Use a monotonically increasing numeric command id. Example:\n\n"
+        << "```text\n"
+        << pushRoot_.string() << "/pushSource_1.json\n"
+        << pushRoot_.string() << "/pushProjectSettings_2.json\n"
+        << "```\n\n"
+        << "Supported push functions:\n\n"
+        << "- `pushSource(filename)`: asks the GUI to open `filename` in `Development -> EditorTabs`.\n"
+        << "- `pushProjectSettings(topModuleName, topModuleFile, mainTestFile)`: asks the GUI to save project settings in the backend.\n\n"
+        << "`pushSource` JSON format:\n\n"
+        << "```json\n"
+        << "{\"filename\":\"/absolute/path/to/source.cpp\"}\n"
+        << "```\n\n"
+        << "`pushProjectSettings` JSON format:\n\n"
+        << "```json\n"
+        << "{\"topModuleName\":\"Memory\",\"topModuleFile\":\"Memory.cpp\",\"mainTestFile\":\"MemoryTest.cpp\"}\n"
+        << "```\n\n"
+        << "Parameter rules:\n\n"
+        << "- `filename` must be an absolute or project-root-accessible source path.\n"
+        << "- The file must be readable by the backend and allowed by the active project root.\n"
+        << "- The Development window must be open in the GUI; otherwise the GUI ignores the command and reports status.\n\n"
+        << "After generating the cpphdl model source and the main test source, push the project settings with `pushProjectSettings` so Trident knows the top module name, top module file, and main test file.\n\n"
+        << "Shell example:\n\n"
+        << "```sh\n"
+        << "printf '{\"filename\":\"/path/to/file.cpp\"}\\n' > "
+        << pushRoot_.string() << "/pushSource_1.json\n"
+        << "printf '{\"topModuleName\":\"Memory\",\"topModuleFile\":\"Memory.cpp\",\"mainTestFile\":\"MemoryTest.cpp\"}\\n' > "
+        << pushRoot_.string() << "/pushProjectSettings_2.json\n"
+        << "```\n";
 }
 
 void Server::streamBashConsole(std::intptr_t rawClient) {
@@ -560,11 +889,16 @@ std::string Server::dispatch(const HttpRequest& request) {
         request.path == "/rpc/create-project" ||
         request.path == "/rpc/load-project" ||
         request.path == "/rpc/save-project" ||
+        request.path == "/rpc/close-project" ||
         request.path == "/rpc/get-project-settings" ||
         request.path == "/rpc/save-project-settings" ||
         request.path == "/rpc/get-current-project-dir" ||
         request.path == "/rpc/get-opened-file-list" ||
         request.path == "/rpc/update-development-tabs" ||
+        request.path == "/rpc/list-filesystem" ||
+        request.path == "/rpc/create-filesystem-file" ||
+        request.path == "/rpc/delete-filesystem-file" ||
+        request.path == "/rpc/rename-filesystem-file" ||
         request.path == "/rpc/list-project-files" ||
         request.path == "/rpc/open-file" ||
         request.path == "/rpc/create-file" ||
@@ -584,10 +918,21 @@ std::string Server::handleCompileRpc() {
     if (!compilationFlow_.loaded()) {
         return jsonResponse(500, R"({"error":"flow_not_loaded"})");
     }
+    if (!project_) {
+        return jsonResponse(500, R"({"error":"no_project"})");
+    }
+    if (project_->topModuleName.empty() || project_->topModuleFile.empty()) {
+        return jsonResponse(500, R"({"error":"compile_settings_required"})");
+    }
+
     return jsonResponse(200, compilationFlow_.execute(
         "Compile",
-        projectRoot(),
-        project_ ? project_->topModuleName : std::string("top")));
+        project_->path,
+        pushRoot_.parent_path(),
+        project_->projectName,
+        project_->topModuleName,
+        project_->topModuleFile,
+        project_->mainTestFile));
 }
 
 std::string Server::handleProjectRpc(const HttpRequest& request) {
@@ -624,22 +969,23 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
             }
         }
         project_ = std::make_unique<Project>(path);
+        project_->save();
         std::filesystem::current_path(project_->path, error);
+        writeAgentSkill(project_->path);
         return jsonResponse(200, "{\"project\":" + project_->toJson() + ",\"created\":true}");
     }
 
     if (request.path == "/rpc/load-project") {
-        const auto path = requestPathOrCurrent(request.body);
-        if (!std::filesystem::exists(path / ".trident" / "project.json")) {
-            return jsonResponse(500, R"({"error":"No project folder specified"})");
-        }
-        auto loaded = Project(path);
-        if (!Project::load(path, loaded)) {
-            return jsonResponse(500, R"({"error":"No project folder specified"})");
+        const auto archive = jsonStringValue(request.body, "path");
+        Project loaded(std::filesystem::current_path());
+        std::string message;
+        if (!extractProjectArchive(archive, loaded, &message)) {
+            return jsonResponse(500, "{\"error\":\"" + jsonEscape(message) + "\"}");
         }
         project_ = std::make_unique<Project>(std::move(loaded));
         std::error_code error;
         std::filesystem::current_path(project_->path, error);
+        writeAgentSkill(project_->path);
         return jsonResponse(200, "{\"project\":" + project_->toJson() + ",\"loaded\":true}");
     }
 
@@ -647,10 +993,23 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
         if (!project_) {
             return jsonResponse(500, R"({"error":"no_project"})");
         }
-        if (!project_->save()) {
-            return jsonResponse(500, R"({"error":"save_project_failed"})");
+        const auto requestedName = normalizedProjectName(jsonStringValue(request.body, "projectName"));
+        if (!requestedName.empty()) {
+            project_->projectName = requestedName;
         }
-        return jsonResponse(200, "{\"project\":" + project_->toJson() + ",\"saved\":true}");
+        const bool overwrite = jsonBoolValue(request.body, "overwrite");
+        std::string message;
+        if (!archiveProject(*project_, overwrite, &message)) {
+            const int status = message == "archive_exists" ? 409 : 500;
+            return jsonResponse(status, "{\"error\":\"" + jsonEscape(message) + "\"}");
+        }
+        return jsonResponse(200, "{\"project\":" + project_->toJson() + ",\"archive\":\"" +
+            jsonEscape(projectArchivePath(*project_).string()) + "\",\"saved\":true}");
+    }
+
+    if (request.path == "/rpc/close-project") {
+        project_.reset();
+        return jsonResponse(200, R"({"closed":true})");
     }
 
     if (request.path == "/rpc/get-project-settings") {
@@ -664,8 +1023,15 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
         if (!project_) {
             return jsonResponse(500, R"({"error":"no_project"})");
         }
-        const auto topModuleName = jsonStringValue(request.body, "topModuleName");
-        project_->topModuleName = topModuleName.empty() ? "top" : topModuleName;
+        if (jsonHasKey(request.body, "topModuleName")) {
+            project_->topModuleName = jsonStringValue(request.body, "topModuleName");
+        }
+        if (jsonHasKey(request.body, "topModuleFile")) {
+            project_->topModuleFile = jsonStringValue(request.body, "topModuleFile");
+        }
+        if (jsonHasKey(request.body, "mainTestFile")) {
+            project_->mainTestFile = jsonStringValue(request.body, "mainTestFile");
+        }
         if (!project_->save()) {
             return jsonResponse(500, R"({"error":"save_project_failed"})");
         }
@@ -681,7 +1047,7 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
     }
 
     if (request.path == "/rpc/get-opened-file-list") {
-        return jsonResponse(200, project_ ? openedFilesJson(project_.get()) : RPCGetOpenedFileListTest::sampleJson());
+        return jsonResponse(200, openedFilesJson(project_.get()));
     }
 
     if (request.path == "/rpc/list-project-files") {
@@ -693,6 +1059,91 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
             return jsonResponse(500, R"({"error":"not_a_directory"})");
         }
         return jsonResponse(200, projectFileListJson(root, path));
+    }
+
+    if (request.path == "/rpc/list-filesystem") {
+        const auto root = projectRoot();
+        const auto requested = jsonStringValue(request.body, "path");
+        const auto path = canonicalInsideRoot(root, requested.empty() ? root : std::filesystem::path(requested));
+        std::error_code error;
+        if (!std::filesystem::is_directory(path, error)) {
+            return jsonResponse(500, R"({"error":"not_a_directory"})");
+        }
+        return jsonResponse(200, filesystemListJson(root, path));
+    }
+
+    if (request.path == "/rpc/create-filesystem-file") {
+        const auto root = projectRoot();
+        const auto dir = canonicalInsideRoot(root, jsonStringValue(request.body, "path"));
+        const auto name = jsonStringValue(request.body, "name");
+        if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+            return jsonResponse(500, R"({"error":"invalid_file_name"})");
+        }
+        std::error_code error;
+        if (!std::filesystem::is_directory(dir, error)) {
+            return jsonResponse(500, R"({"error":"not_a_directory"})");
+        }
+        const auto filePath = canonicalInsideRoot(root, dir / name);
+        if (std::filesystem::exists(filePath, error)) {
+            return jsonResponse(500, R"({"error":"file_exists"})");
+        }
+        std::ofstream file(filePath, std::ios::binary);
+        if (!file) {
+            return jsonResponse(500, R"({"error":"create_file_failed"})");
+        }
+        return jsonResponse(200, "{\"created\":true,\"directory\":" + filesystemListJson(root, dir) + "}");
+    }
+
+    if (request.path == "/rpc/delete-filesystem-file") {
+        const auto root = projectRoot();
+        const auto path = canonicalInsideRoot(root, jsonStringValue(request.body, "path"));
+        std::error_code error;
+        const bool isFile = std::filesystem::is_regular_file(path, error);
+        const bool isDirectory = std::filesystem::is_directory(path, error);
+        if (!isFile && !isDirectory) {
+            return jsonResponse(500, R"({"error":"not_a_file_or_directory"})");
+        }
+        const auto parent = path.parent_path();
+        if (isDirectory) {
+            std::filesystem::remove_all(path, error);
+        } else {
+            std::filesystem::remove(path, error);
+        }
+        if (error) {
+            return jsonResponse(500, "{\"error\":\"delete_failed\",\"message\":\"" + jsonEscape(error.message()) + "\"}");
+        }
+        if (project_ && isFile) {
+            removeOpenedFile(*project_, path);
+        }
+        return jsonResponse(200, "{\"deleted\":true,\"directory\":" + filesystemListJson(root, parent) + "}");
+    }
+
+    if (request.path == "/rpc/rename-filesystem-file") {
+        const auto root = projectRoot();
+        const auto path = canonicalInsideRoot(root, jsonStringValue(request.body, "path"));
+        const auto name = jsonStringValue(request.body, "name");
+        if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+            return jsonResponse(500, R"({"error":"invalid_file_name"})");
+        }
+        std::error_code error;
+        const bool isFile = std::filesystem::is_regular_file(path, error);
+        const bool isDirectory = std::filesystem::is_directory(path, error);
+        if (!isFile && !isDirectory) {
+            return jsonResponse(500, R"({"error":"not_a_file_or_directory"})");
+        }
+        const auto target = canonicalInsideRoot(root, path.parent_path() / name);
+        if (std::filesystem::exists(target, error)) {
+            return jsonResponse(500, R"({"error":"file_exists"})");
+        }
+        std::filesystem::rename(path, target, error);
+        if (error) {
+            return jsonResponse(500, "{\"error\":\"rename_file_failed\",\"message\":\"" + jsonEscape(error.message()) + "\"}");
+        }
+        if (project_ && isFile) {
+            removeOpenedFile(*project_, path);
+            addOpenedFile(*project_, target);
+        }
+        return jsonResponse(200, "{\"renamed\":true,\"directory\":" + filesystemListJson(root, target.parent_path()) + "}");
     }
 
     if (request.path == "/rpc/open-file") {

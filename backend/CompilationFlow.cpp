@@ -106,6 +106,35 @@ std::string parseJsonString(const std::string& text, std::size_t quotePos, std::
     return value;
 }
 
+std::string parseJsonStringArray(const std::string& text, std::size_t arrayPos, std::size_t* endPos = nullptr) {
+    std::ostringstream value;
+    bool first = true;
+    std::size_t pos = arrayPos + 1;
+    while (pos < text.size()) {
+        pos = text.find_first_not_of(" \t\r\n,", pos);
+        if (pos == std::string::npos) {
+            break;
+        }
+        if (text[pos] == ']') {
+            if (endPos) {
+                *endPos = pos + 1;
+            }
+            return value.str();
+        }
+        if (text[pos] != '"') {
+            break;
+        }
+        std::size_t stringEnd = 0;
+        if (!first) {
+            value << '\n';
+        }
+        first = false;
+        value << parseJsonString(text, pos, &stringEnd);
+        pos = stringEnd;
+    }
+    return value.str();
+}
+
 std::unordered_map<std::string, std::string> parseActionCommands(const std::string& text) {
     std::unordered_map<std::string, std::string> commands;
     const auto actionsKey = text.find("\"actions\"");
@@ -131,13 +160,20 @@ std::unordered_map<std::string, std::string> parseActionCommands(const std::stri
             continue;
         }
         const auto colon = text.find(':', commandKey);
-        const auto commandQuote = colon == std::string::npos ? std::string::npos : text.find('"', colon + 1);
-        if (commandQuote == std::string::npos) {
+        const auto valueStart = colon == std::string::npos ? std::string::npos : text.find_first_not_of(" \t\r\n", colon + 1);
+        if (valueStart == std::string::npos) {
             pos = actionEnd;
             continue;
         }
         std::size_t commandEnd = 0;
-        commands[action] = parseJsonString(text, commandQuote, &commandEnd);
+        if (text[valueStart] == '"') {
+            commands[action] = parseJsonString(text, valueStart, &commandEnd);
+        } else if (text[valueStart] == '[') {
+            commands[action] = parseJsonStringArray(text, valueStart, &commandEnd);
+        } else {
+            pos = actionEnd;
+            continue;
+        }
         pos = commandEnd;
     }
     return commands;
@@ -260,9 +296,17 @@ const std::filesystem::path& CompilationFlow::sourcePath() const {
     return sourcePath_;
 }
 
+std::filesystem::path CompilationFlow::toolsPath() const {
+    return existingToolsPath(sourcePath_);
+}
+
 std::string CompilationFlow::execute(const std::string& action,
                                      const std::filesystem::path& projectPath,
-                                     const std::string& topModuleName) const {
+                                     const std::filesystem::path& binDir,
+                                     const std::string& projectName,
+                                     const std::string& topModuleName,
+                                     const std::string& topModuleFile,
+                                     const std::string& mainTestFile) const {
     const auto commandIt = commands_.find(action);
     if (commandIt == commands_.end()) {
         return "{\"error\":\"unknown_flow_action\",\"action\":\"" + jsonEscape(action) + "\"}";
@@ -271,15 +315,21 @@ std::string CompilationFlow::execute(const std::string& action,
     std::error_code error;
     const auto project = std::filesystem::weakly_canonical(projectPath, error);
     const auto projectString = error ? projectPath.string() : project.string();
-    const auto toolsPath = existingToolsPath(sourcePath_).string();
+    const auto toolsPath = this->toolsPath().string();
 
     auto command = commandIt->second;
     replaceAll(command, "$(ToolsPath)", toolsPath);
+    replaceAll(command, "$(BinDir)", binDir.string());
     replaceAll(command, "$(ProjectPath)", projectString);
+    replaceAll(command, "$(ProjectName)", projectName);
     replaceAll(command, "$(CSourceList)", sourceList(projectString, isCSource));
     replaceAll(command, "$(SVSourceList)", sourceList(projectString, isSvSource));
     replaceAll(command, "$(TopModuleName)", topModuleName);
     replaceAll(command, "${TopModuleName}", topModuleName);
+    replaceAll(command, "$(TopModuleFile)", topModuleFile);
+    replaceAll(command, "${TopModuleFile}", topModuleFile);
+    replaceAll(command, "$(MainTestFile)", mainTestFile);
+    replaceAll(command, "${MainTestFile}", mainTestFile);
 
     const std::string script =
         "cd " + shellQuote(projectString) + " && {\n" + command +

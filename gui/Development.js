@@ -1,6 +1,7 @@
 import { EditorTabs } from './EditorTabs.js';
 import { Console } from './Console.js';
 import { FocusedControl } from './FocusedControl.js';
+import { Log } from './Log.js';
 
 const ENDPOINTS = {
   files: '/rpc/get-opened-file-list',
@@ -15,6 +16,7 @@ export class Development extends FocusedControl {
     this.fetchJson = options.fetchJson || defaultFetchJson;
     this.onStatus = options.onStatus || (() => {});
     this.onOpenFileRequest = options.onOpenFileRequest || (() => {});
+    this.onProjectSettingsRequired = options.onProjectSettingsRequired || (() => {});
     this.paneSizes = [58, 24, 18];
     this.drag = null;
 
@@ -46,9 +48,8 @@ export class Development extends FocusedControl {
     this.splitterA = this.createSplitter(0);
     this.splitterB = this.createSplitter(1);
 
-    this.logOutput = document.createElement('pre');
-    this.logOutput.className = 'development-log-output';
-    this.logOutput.textContent = 'Loading development log...';
+    this.log = new Log();
+    this.log.setText('Loading development log...');
 
     this.console = new Console({
       fetchJson: this.fetchJson,
@@ -57,7 +58,7 @@ export class Development extends FocusedControl {
     });
 
     this.editorPane.appendChild(this.editorTabs.element());
-    this.logPane.appendChild(this.logOutput);
+    this.logPane.appendChild(this.log.element());
     this.consolePane.appendChild(this.console.element());
     this.root.append(this.toolbar, this.editorPane, this.splitterA, this.logPane, this.splitterB, this.consolePane);
     this.applySizes();
@@ -84,6 +85,10 @@ export class Development extends FocusedControl {
     await this.editorTabs.refreshFromBackend();
   }
 
+  openFilePayload(payload) {
+    this.editorTabs.addPayload(payload);
+  }
+
   async saveModifiedEditors() {
     await this.editorTabs.saveModifiedWithPrompts();
   }
@@ -105,31 +110,56 @@ export class Development extends FocusedControl {
   }
 
   async compile() {
-    this.onStatus(`Calling ${ENDPOINTS.compile}`);
-    this.logOutput.textContent = 'Compiling...';
     try {
+      const ready = await this.ensureCompileSettings();
+      if (!ready) {
+        this.log.setText('Compile cancelled: Top module name and Top module file are required.');
+        this.onStatus('Compile settings required');
+        return;
+      }
+
+      this.onStatus(`Calling ${ENDPOINTS.compile}`);
+      this.log.setText('Compiling...');
       const payload = await this.fetchJson(ENDPOINTS.compile);
       const header = [
         `Action: ${payload.action || 'Compile'}`,
         `Exit code: ${payload.exitCode}`,
         payload.command ? `Command: ${payload.command}` : ''
       ].filter(Boolean).join('\n');
-      this.logOutput.textContent = `${header}\n\n${payload.output || ''}`;
+      this.log.setText(`${header}\n\n${payload.output || ''}`);
       this.onStatus(payload.exitCode === 0 ? 'Compile finished' : 'Compile failed');
     } catch (error) {
-      this.logOutput.textContent = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message === 'compile_settings_required' || message === 'top_module_required') {
+        this.onProjectSettingsRequired();
+        this.log.setText('Compile cancelled: Top module name and Top module file are required.');
+        this.onStatus('Compile settings required');
+        return;
+      }
+      this.log.setText(error instanceof Error ? error.message : String(error));
       this.onStatus('Compile RPC error');
     }
+  }
+
+  async ensureCompileSettings() {
+    this.onStatus('Checking project settings');
+    const payload = await this.fetchJson('/rpc/get-project-settings');
+    if (payload.settings?.topModuleName && payload.settings?.topModuleFile) {
+      return true;
+    }
+
+    this.onProjectSettingsRequired();
+    return false;
   }
 
   async refreshLog() {
     this.onStatus(`Calling ${ENDPOINTS.log}`);
     try {
       const payload = await this.fetchJson(ENDPOINTS.log);
-      this.logOutput.textContent = payload.log || '';
+      this.log.setText(payload.log || '');
       this.onStatus('Ready');
     } catch (error) {
-      this.logOutput.textContent = error instanceof Error ? error.message : String(error);
+      this.log.setText(error instanceof Error ? error.message : String(error));
       this.onStatus('RPC error');
     }
   }

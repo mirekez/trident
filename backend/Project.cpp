@@ -79,10 +79,13 @@ bool Project::load(const std::filesystem::path& projectPath, Project& project) {
     stream << file.rdbuf();
     const auto json = stream.str();
     project = Project(canonicalPath);
+    project.projectName = jsonStringValue(json, "projectName");
     const auto topModuleName = jsonStringValue(json, "topModuleName");
     if (!topModuleName.empty()) {
         project.topModuleName = topModuleName;
     }
+    project.topModuleFile = jsonStringValue(json, "topModuleFile");
+    project.mainTestFile = jsonStringValue(json, "mainTestFile");
     std::size_t pos = 0;
     while ((pos = json.find("\"path\":\"", pos)) != std::string::npos) {
         pos += 8;
@@ -101,8 +104,11 @@ bool Project::load(const std::filesystem::path& projectPath, Project& project) {
 
 std::string Project::toJson() const {
     std::ostringstream json;
-    json << "{\"path\":\"" << jsonEscape(path.string()) << "\",\"topModuleName\":\""
-         << jsonEscape(topModuleName) << "\",\"openedFiles\":[";
+    json << "{\"path\":\"" << jsonEscape(path.string()) << "\",\"projectName\":\""
+         << jsonEscape(projectName) << "\",\"topModuleName\":\""
+         << jsonEscape(topModuleName) << "\",\"topModuleFile\":\""
+         << jsonEscape(topModuleFile) << "\",\"mainTestFile\":\""
+         << jsonEscape(mainTestFile) << "\",\"openedFiles\":[";
     for (std::size_t i = 0; i < openedFiles.size(); ++i) {
         if (i != 0) {
             json << ',';

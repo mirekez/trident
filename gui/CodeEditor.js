@@ -34,6 +34,9 @@ export class CodeEditor extends FocusedControl {
     this.scroller = document.createElement('div');
     this.scroller.className = 'code-editor-scroller';
 
+    this.highlightViewport = document.createElement('div');
+    this.highlightViewport.className = 'code-editor-highlight-viewport';
+
     this.highlight = document.createElement('pre');
     this.highlight.className = 'code-editor-highlight';
     this.highlight.setAttribute('aria-hidden', 'true');
@@ -46,7 +49,8 @@ export class CodeEditor extends FocusedControl {
     this.textarea.value = this.value;
     this.textarea.setAttribute('aria-label', `${this.path} source editor`);
 
-    this.scroller.append(this.highlight, this.textarea);
+    this.highlightViewport.appendChild(this.highlight);
+    this.scroller.append(this.highlightViewport, this.textarea);
     this.root.append(this.scroller);
 
     this.textarea.addEventListener('input', () => {
@@ -84,6 +88,8 @@ export class CodeEditor extends FocusedControl {
   }
 
   syncScroll() {
+    this.highlight.style.minHeight = `${this.textarea.scrollHeight}px`;
+    this.highlight.style.minWidth = `${this.textarea.scrollWidth}px`;
     this.highlight.style.transform = `translate(${-this.textarea.scrollLeft}px, ${-this.textarea.scrollTop}px)`;
   }
 

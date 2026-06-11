@@ -82,7 +82,7 @@ add_test(NAME trident_backend_tests COMMAND trident_backend_tests)
 
 add_custom_target(gui
     COMMAND ${CMAKE_COMMAND} -E echo "GUI is plain JavaScript in ${CMAKE_SOURCE_DIR}/gui and is served by trident_backend."
-    SOURCES gui/index.html gui/app.js gui/FocusedControl.js gui/CodeEditor.js gui/EditorTabs.js gui/Development.js gui/Console.js gui/PathSelector.js gui/OpenFile.js gui/ProjectOptions.js gui/styles.css gui/package.json
+    SOURCES gui/index.html gui/app.js gui/FocusedControl.js gui/CodeEditor.js gui/EditorTabs.js gui/Development.js gui/Log.js gui/Console.js gui/PathSelector.js gui/OpenFile.js gui/ProjectOptions.js gui/FileSelect.js gui/Filesysten.js gui/styles.css gui/package.json
 )
 
 add_subdirectory(tools)

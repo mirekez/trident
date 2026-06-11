@@ -9,18 +9,12 @@
 <body>
   <main class="app-shell">
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-head">
-        <div class="app-title">Trident IDE</div>
-        <div class="connection" id="connection">Ready</div>
-      </div>
       <div class="launch-panel" id="launch-panel">
-        <div class="launch-title">RPC test calls</div>
         <div class="launch-buttons" id="launch-buttons">Loading buttons...</div>
       </div>
     </aside>
-    <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize command panel"></div>
-    <section class="desktop" id="desktop" aria-label="Internal windows">
-    </section>
+    <section class="desktop" id="desktop" aria-label="Internal windows"></section>
+    <div class="status-line" id="connection">Ready</div>
   </main>
 
   <template id="window-template">

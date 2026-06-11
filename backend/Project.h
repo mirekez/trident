@@ -6,8 +6,11 @@
 
 struct Project {
     std::filesystem::path path;
+    std::string projectName;
     std::vector<std::filesystem::path> openedFiles;
-    std::string topModuleName = "top";
+    std::string topModuleName;
+    std::string topModuleFile;
+    std::string mainTestFile;
 
     explicit Project(std::filesystem::path projectPath);
 

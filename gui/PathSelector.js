@@ -17,7 +17,7 @@ export class PathSelector {
     this.toolbar.className = 'path-selector-toolbar';
 
     this.upButton = this.button('Up', () => this.loadPath(this.payload.parent));
-    this.selectButton = this.button(this.mode === 'load' ? 'Load' : 'Select', () => this.selectCurrentPath());
+    this.selectButton = this.button(this.mode === 'load' ? 'Load' : 'Create folder', () => this.selectCurrentPath());
     this.toolbar.append(this.upButton, this.selectButton);
 
     this.list = document.createElement('div');
@@ -25,16 +25,16 @@ export class PathSelector {
 
     this.createRow = document.createElement('form');
     this.createRow.className = 'path-selector-create';
-    this.folderInput = document.createElement('input');
-    this.folderInput.type = 'text';
-    this.folderInput.placeholder = 'New folder';
-    this.folderInput.autocomplete = 'off';
-    this.folderInput.spellcheck = false;
+    this.projectInput = document.createElement('input');
+    this.projectInput.type = 'text';
+    this.projectInput.placeholder = 'Project name';
+    this.projectInput.autocomplete = 'off';
+    this.projectInput.spellcheck = false;
     this.createButton = document.createElement('button');
     this.createButton.type = 'submit';
-    this.createButton.textContent = 'Create';
-    this.createRow.append(this.folderInput, this.createButton);
-    this.createRow.addEventListener('submit', (event) => this.createFolder(event));
+    this.createButton.textContent = 'Create project';
+    this.createRow.append(this.projectInput, this.createButton);
+    this.createRow.addEventListener('submit', (event) => this.createProject(event));
 
     this.message = document.createElement('div');
     this.message.className = 'path-selector-message';
@@ -91,10 +91,9 @@ export class PathSelector {
     }
   }
 
-  async createFolder(event) {
-    event.preventDefault();
-    const name = this.folderInput.value.trim();
+  async createFolder(name) {
     if (!name) {
+      this.showFolderQuestion();
       return;
     }
     this.onStatus('Calling /rpc/create-folder');
@@ -103,7 +102,6 @@ export class PathSelector {
         path: this.payload.path,
         name
       });
-      this.folderInput.value = '';
       this.message.textContent = '';
       this.render();
       this.onStatus('Ready');
@@ -112,37 +110,118 @@ export class PathSelector {
     }
   }
 
-  async selectCurrentPath() {
-    this.onStatus(this.mode === 'load' ? 'Calling /rpc/load-project' : 'Calling /rpc/create-project');
+  async createProject(event) {
+    event.preventDefault();
+    const name = this.projectInput.value.trim();
+    if (!name) {
+      this.message.textContent = 'Enter project name';
+      return;
+    }
+    if (name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
+      this.message.textContent = 'Invalid project name';
+      return;
+    }
+    this.onStatus('Calling /rpc/create-folder');
     try {
-      if (this.mode === 'load') {
-        const loaded = await this.fetchJson('/rpc/load-project', { path: this.payload.path });
-        this.message.textContent = `Project loaded from ${loaded.project.path}`;
-        this.onProjectCreated(loaded.project);
-      } else {
-        const request = { path: this.payload.path };
-        try {
-          await this.fetchJson('/rpc/create-project', request);
-        } catch (error) {
-          if (String(error.message || error) !== 'project_exists') {
-            throw error;
-          }
-          if (!window.confirm('Project metadata already exists. Overwrite and delete the existing .trident folder?')) {
-            this.message.textContent = 'Project creation cancelled';
-            this.onStatus('Ready');
-            return;
-          }
-          await this.fetchJson('/rpc/create-project', { ...request, overwrite: true });
-        }
-        const saved = await this.fetchJson('/rpc/save-project');
-        this.message.textContent = `Project saved in ${saved.project.path}/.trident`;
-        this.onProjectCreated(saved.project);
+      const createdFolder = await this.fetchJson('/rpc/create-folder', {
+        path: this.payload.path,
+        name
+      });
+      const created = await this.createProjectAtPath(createdFolder.path);
+      if (!created) {
+        return;
       }
       this.onStatus('Ready');
       this.onDone();
     } catch (error) {
       this.setError(error);
     }
+  }
+
+  async selectCurrentPath() {
+    if (this.mode !== 'load') {
+      this.showFolderQuestion();
+      return;
+    }
+    this.onStatus('Calling /rpc/load-project');
+    try {
+      const loaded = await this.fetchJson('/rpc/load-project', { path: this.payload.path });
+      this.message.textContent = `Project loaded from ${loaded.project.path}`;
+      this.onProjectCreated(loaded.project);
+      this.onStatus('Ready');
+      this.onDone();
+    } catch (error) {
+      this.setError(error);
+    }
+  }
+
+  async createProjectAtPath(path) {
+    const request = { path };
+    let created = null;
+    try {
+      created = await this.fetchJson('/rpc/create-project', request);
+    } catch (error) {
+      if (String(error.message || error) !== 'project_exists') {
+        throw error;
+      }
+      if (!window.confirm('Project metadata already exists. Overwrite and delete the existing .trident folder?')) {
+        this.message.textContent = 'Project creation cancelled';
+        this.onStatus('Ready');
+        return false;
+      }
+      created = await this.fetchJson('/rpc/create-project', { ...request, overwrite: true });
+    }
+    this.projectInput.value = '';
+    this.message.textContent = `Project created in ${created.project.path}`;
+    this.onProjectCreated(created.project);
+    return true;
+  }
+
+  showFolderQuestion() {
+    const overlay = document.createElement('div');
+    overlay.className = 'path-selector-question';
+
+    const dialog = document.createElement('form');
+    dialog.className = 'path-selector-question-dialog';
+
+    const title = document.createElement('div');
+    title.className = 'path-selector-question-title';
+    title.textContent = 'Create folder';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Folder name';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+
+    const actions = document.createElement('div');
+    actions.className = 'path-selector-question-actions';
+
+    const ok = document.createElement('button');
+    ok.type = 'submit';
+    ok.textContent = 'OK';
+
+    const discard = document.createElement('button');
+    discard.type = 'button';
+    discard.textContent = 'Discard';
+    discard.addEventListener('click', () => overlay.remove());
+
+    actions.append(ok, discard);
+    dialog.append(title, input, actions);
+    overlay.appendChild(dialog);
+    this.root.appendChild(overlay);
+    input.focus();
+
+    dialog.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const name = input.value.trim();
+      if (!name) {
+        input.focus();
+        return;
+      }
+      overlay.remove();
+      await this.createFolder(name);
+    });
   }
 
   button(label, onClick) {

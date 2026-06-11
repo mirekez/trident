@@ -31,9 +31,12 @@ private:
     std::unique_ptr<Project> project_;
     BashConsoleSession bashConsole_;
     CompilationFlow compilationFlow_;
+    std::filesystem::path pushRoot_;
 
     void handleClient(std::intptr_t client);
     void streamBashConsole(std::intptr_t client);
+    void streamPushEvents(std::intptr_t client);
+    void writeAgentSkill(const std::filesystem::path& root) const;
     std::string dispatch(const HttpRequest& request);
     std::string handleProjectRpc(const HttpRequest& request);
     std::string handleCompileRpc();

@@ -1,69 +1,59 @@
-import { EditorTabs } from './EditorTabs.js';
 import { Development } from './Development.js';
 import { PathSelector } from './PathSelector.js';
 import { OpenFile } from './OpenFile.js';
 import { ProjectOptions } from './ProjectOptions.js';
+import { Filesystem } from './Filesysten.js';
+import { FileSelect } from './FileSelect.js';
 
 const desktop = document.querySelector('#desktop');
 const launchButtons = document.querySelector('#launch-buttons');
 const template = document.querySelector('#window-template');
 const connection = document.querySelector('#connection');
-const splitter = document.querySelector('#splitter');
 
 const rpcConfig = {
   createProject: {
     title: 'Create Project',
     buttonLabel: 'Create project',
+    icon: newProjectIcon(),
     endpoint: '/rpc/list-folders',
     windowClass: 'path-window',
     render: (payload, node) => renderPathSelector(payload, node, 'create')
   },
   loadProject: {
-    title: 'Load Project',
     buttonLabel: 'Load project',
-    endpoint: '/rpc/list-folders',
-    windowClass: 'path-window',
-    render: (payload, node) => renderPathSelector(payload, node, 'load')
+    icon: loadProjectIcon(),
+    action: () => openProjectArchiveWindow()
   },
   saveProject: {
     buttonLabel: 'Save project',
+    icon: saveProjectIcon(),
     action: saveProject
+  },
+  closeProject: {
+    buttonLabel: 'Close project',
+    icon: closeProjectIcon(),
+    action: closeProject
   },
   projectOptions: {
     title: 'Project Settings',
     buttonLabel: 'Project settings',
+    icon: projectSettingsIcon(),
     endpoint: '/rpc/get-project-settings',
     windowClass: 'project-options-window',
     render: renderProjectOptions
   },
-  status: {
-    title: 'Backend Status',
-    buttonLabel: 'Open Status RPC',
-    endpoint: '/rpc/status',
-    render: renderStatus
-  },
-  metrics: {
-    title: 'Demo Metrics',
-    buttonLabel: 'Open Metrics RPC',
-    endpoint: '/rpc/metrics',
-    render: renderMetrics
-  },
-  picture: {
-    title: 'Generated Picture',
-    buttonLabel: 'Open Picture RPC',
-    endpoint: '/rpc/picture',
-    render: renderPicture
-  },
-  loadFile: {
-    title: 'Code Editor',
-    buttonLabel: 'Open Code Editor',
-    endpoint: '/rpc/load-file',
-    windowClass: 'editor-window',
-    render: (payload) => renderEditorTabs(payload, '/rpc/load-file')
+  filesystem: {
+    title: 'Filesystem',
+    buttonLabel: 'Filesystem',
+    icon: filesystemIcon(),
+    endpoint: '/rpc/list-filesystem',
+    windowClass: 'filesystem-window',
+    render: renderFilesystem
   },
   development: {
     title: 'Development',
     buttonLabel: 'Open Development',
+    icon: developmentIcon(),
     endpoint: '/rpc/get-opened-file-list',
     windowClass: 'development-window',
     render: renderDevelopment
@@ -76,7 +66,8 @@ let activeDevelopment = null;
 const openMainWindows = new Map();
 
 createRpcButtons();
-enableSplitter();
+installPushHandlers();
+startPushEvents();
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') {
@@ -94,7 +85,9 @@ function createRpcButtons() {
     button.type = 'button';
     button.className = 'rpc-launch-button';
     button.dataset.window = key;
-    button.textContent = config.buttonLabel;
+    button.title = config.buttonLabel;
+    button.setAttribute('aria-label', config.buttonLabel);
+    button.innerHTML = config.icon || '';
     button.addEventListener('click', () => {
       if (config.action) {
         config.action();
@@ -106,7 +99,7 @@ function createRpcButtons() {
   });
 }
 
-async function createWindow(key) {
+async function createWindow(key, renderOptions = {}) {
   const config = rpcConfig[key];
   if (!config) {
     return;
@@ -150,7 +143,7 @@ async function createWindow(key) {
   try {
     connection.textContent = `Calling ${config.endpoint}`;
     const payload = await callRpc(config.endpoint);
-    const rendered = config.render(payload, node);
+    const rendered = config.render(payload, node, renderOptions);
     if (rendered.cleanup) {
       node._cleanup = rendered.cleanup;
     }
@@ -174,75 +167,14 @@ function closeWindow(node) {
   node.remove();
 }
 
-function renderStatus(payload) {
-  const root = document.createElement('div');
-  root.className = 'stack';
-  root.append(
-    field('State', payload.state),
-    field('Uptime', `${payload.uptimeSeconds} seconds`),
-    listField('Services', payload.services || [])
-  );
-  return root;
-}
-
-function renderMetrics(payload) {
-  const root = document.createElement('div');
-  root.className = 'stack';
-  const chart = document.createElement('div');
-  chart.className = 'bar-chart';
-
-  const values = payload.latencyMs || [];
-  const max = Math.max(...values, 1);
-  values.forEach((value) => {
-    const bar = document.createElement('span');
-    bar.style.height = `${Math.max(12, (value / max) * 100)}%`;
-    bar.title = `${value} ms`;
-    chart.appendChild(bar);
-  });
-
-  root.append(
-    field('Requests Today', payload.requestsToday),
-    field('Active Users', payload.activeUsers),
-    chart
-  );
-  return root;
-}
-
-function renderPicture(payload) {
-  const root = document.createElement('div');
-  root.className = 'stack';
-  const img = document.createElement('img');
-  img.className = 'rpc-image';
-  img.src = payload.image;
-  img.alt = payload.title || 'RPC generated image';
-  root.appendChild(img);
-  root.appendChild(field('MIME', payload.mime));
-  return root;
-}
-
-function renderEditorTabs(payload, endpoint) {
-  const tabs = new EditorTabs({
-    endpoint,
-    fetchJson: callRpc,
-    onStatus: (message) => {
-      connection.textContent = message;
-    },
-    onOpenFileRequest: (tabs) => openFileWindow(tabs)
-  });
-  tabs.loadInitial(payload);
-  return {
-    element: tabs.element(),
-    afterAttach: () => tabs.focus()
-  };
-}
-
 function renderDevelopment(payload) {
   const development = new Development({
     fetchJson: callRpc,
     onStatus: (message) => {
       connection.textContent = message;
     },
-    onOpenFileRequest: (tabs) => openFileWindow(tabs)
+    onOpenFileRequest: (tabs) => openFileWindow(tabs),
+    onProjectSettingsRequired: () => openProjectSettingsForCompile()
   });
   return {
     element: development.element(),
@@ -270,9 +202,6 @@ function renderPathSelector(payload, windowNode, mode) {
     },
     onProjectCreated: (project) => {
       connection.textContent = `Project: ${project.path}`;
-      if (mode === 'load') {
-        activeDevelopment?.refreshTabs();
-      }
     },
     onDone: () => {
       closeWindow(windowNode);
@@ -281,30 +210,350 @@ function renderPathSelector(payload, windowNode, mode) {
   return selector.element();
 }
 
-function renderProjectOptions(payload, windowNode) {
-  const options = new ProjectOptions({
+function renderProjectOptions(payload, windowNode, renderOptions = {}) {
+  const projectOptions = new ProjectOptions({
     payload,
+    note: renderOptions.note || '',
     fetchJson: callRpc,
     onStatus: (message) => {
       connection.textContent = message;
     },
     onDone: () => {
-      windowNode.remove();
+      closeWindow(windowNode);
     }
   });
-  return options.element();
+  return projectOptions.element();
 }
 
-async function saveProject() {
+function openProjectSettingsForCompile() {
+  const existing = openMainWindows.get('projectOptions');
+  if (existing?.isConnected) {
+    closeWindow(existing);
+  }
+  createWindow('projectOptions', {
+    note: 'For compilation both Top module name and Top module file should be set.'
+  });
+}
+
+function renderFilesystem(payload) {
+  const filesystem = new Filesystem({
+    payload,
+    fetchJson: callRpc,
+    onStatus: (message) => {
+      connection.textContent = message;
+    },
+    onOpenFile: (filePayload) => {
+      if (!activeDevelopment) {
+        connection.textContent = 'Open Development window before opening files';
+        return;
+      }
+      activeDevelopment.openFilePayload(filePayload);
+      const developmentWindow = openMainWindows.get('development');
+      if (developmentWindow?.isConnected) {
+        developmentWindow.style.zIndex = String(nextZIndex++);
+      }
+      connection.textContent = `Opened: ${filePayload.path}`;
+    },
+    onOpenProject: (path) => {
+      openProject(path);
+    }
+  });
+  return filesystem.element();
+}
+
+function installPushHandlers() {
+  window.pushSource = async (filename) => {
+    if (!filename) {
+      connection.textContent = 'pushSource ignored: empty filename';
+      return false;
+    }
+    if (!activeDevelopment) {
+      connection.textContent = 'pushSource ignored: Development window is not open';
+      return false;
+    }
+
+    try {
+      connection.textContent = `pushSource: ${filename}`;
+      const payload = await callRpc('/rpc/open-file', { path: filename });
+      activeDevelopment.openFilePayload(payload);
+      const developmentWindow = openMainWindows.get('development');
+      if (developmentWindow?.isConnected) {
+        developmentWindow.style.zIndex = String(nextZIndex++);
+      }
+      connection.textContent = `Opened: ${payload.path}`;
+      return true;
+    } catch (error) {
+      connection.textContent = error instanceof Error ? error.message : String(error);
+      return false;
+    }
+  };
+
+  window.pushProjectSettings = async (settings = {}) => {
+    try {
+      const payload = {
+        topModuleName: settings.topModuleName || '',
+        topModuleFile: settings.topModuleFile || '',
+        mainTestFile: settings.mainTestFile || ''
+      };
+      connection.textContent = 'pushProjectSettings';
+      const response = await callRpc('/rpc/save-project-settings', payload);
+      connection.textContent = `Project settings saved: ${response.settings.path}`;
+      return true;
+    } catch (error) {
+      connection.textContent = error instanceof Error ? error.message : String(error);
+      return false;
+    }
+  };
+}
+
+async function startPushEvents() {
+  while (true) {
+    try {
+      const response = await fetch('/rpc/push-events', { method: 'POST' });
+      if (!response.ok || !response.body) {
+        throw new Error(`Push stream failed with HTTP ${response.status}`);
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          handlePushEvent(line);
+        }
+      }
+      if (buffer.trim()) {
+        handlePushEvent(buffer);
+      }
+    } catch (error) {
+      connection.textContent = error instanceof Error ? error.message : String(error);
+      await delay(1000);
+    }
+  }
+}
+
+function handlePushEvent(line) {
+  if (!line.trim()) {
+    return;
+  }
   try {
-    connection.textContent = 'Checking editors';
-    await activeDevelopment?.saveModifiedEditors();
-    connection.textContent = 'Calling /rpc/save-project';
-    const payload = await callRpc('/rpc/save-project');
-    connection.textContent = `Saved: ${payload.project.path}`;
+    const event = JSON.parse(line);
+    if (event.action === 'pushSource') {
+      window.pushSource(event.filename);
+    } else if (event.action === 'pushProjectSettings') {
+      window.pushProjectSettings({
+        topModuleName: event.topModuleName,
+        topModuleFile: event.topModuleFile,
+        mainTestFile: event.mainTestFile
+      });
+    }
   } catch (error) {
     connection.textContent = error instanceof Error ? error.message : String(error);
   }
+}
+
+async function saveProject(options = {}) {
+  try {
+    const settings = await currentProjectSettings();
+    if (!settings) {
+      connection.textContent = 'No project to save';
+      return false;
+    }
+    connection.textContent = 'Checking editors';
+    await activeDevelopment?.saveModifiedEditors();
+    let projectName = options.projectName || settings.projectName || '';
+    let overwrite = Boolean(options.overwrite);
+    if (!projectName) {
+      const selected = await openProjectSaveNameWindow(settings);
+      if (!selected) {
+        connection.textContent = 'Project save cancelled';
+        return false;
+      }
+      projectName = selected.projectName;
+      overwrite = Boolean(selected.overwrite);
+    } else if (options.overwrite === undefined) {
+      overwrite = window.confirm(`Overwrite ${projectName}.trident?`);
+      if (!overwrite) {
+        connection.textContent = 'Project save cancelled';
+        return false;
+      }
+    }
+    connection.textContent = 'Calling /rpc/save-project';
+    let payload;
+    try {
+      payload = await callRpc('/rpc/save-project', { projectName, overwrite });
+    } catch (error) {
+      if (String(error.message || error) !== 'archive_exists') {
+        throw error;
+      }
+      if (!window.confirm(`${projectName}.trident already exists. Overwrite it?`)) {
+        connection.textContent = 'Project save cancelled';
+        return false;
+      }
+      payload = await callRpc('/rpc/save-project', { projectName, overwrite: true });
+    }
+    connection.textContent = `Saved: ${payload.archive}`;
+    return true;
+  } catch (error) {
+    connection.textContent = error instanceof Error ? error.message : String(error);
+    return false;
+  }
+}
+
+async function openProject(path) {
+  try {
+    const current = await currentProjectSettings();
+    if (current && window.confirm('Save current project before opening another project?')) {
+      const saved = await saveProject();
+      if (!saved) {
+        connection.textContent = 'Open project cancelled';
+        return false;
+      }
+    }
+    connection.textContent = 'Calling /rpc/load-project';
+    const payload = await callRpc('/rpc/load-project', { path });
+    activeDevelopment?.refreshTabs();
+    connection.textContent = `Project: ${payload.project.path}`;
+    closeWindow(openMainWindows.get('loadProject'));
+    closeWindow(openMainWindows.get('saveProjectName'));
+    return true;
+  } catch (error) {
+    connection.textContent = error instanceof Error ? error.message : String(error);
+    return false;
+  }
+}
+
+async function closeProject() {
+  try {
+    const current = await currentProjectSettings();
+    if (!current) {
+      connection.textContent = 'No project to close';
+      return false;
+    }
+    if (!window.confirm('Save and close current project?')) {
+      connection.textContent = 'Close project cancelled';
+      return false;
+    }
+    const saved = await saveProject();
+    if (!saved) {
+      connection.textContent = 'Close project cancelled';
+      return false;
+    }
+    connection.textContent = 'Calling /rpc/close-project';
+    await callRpc('/rpc/close-project');
+    closeWindow(openMainWindows.get('development'));
+    closeWindow(openMainWindows.get('filesystem'));
+    closeWindow(openMainWindows.get('projectOptions'));
+    connection.textContent = 'Project closed';
+    return true;
+  } catch (error) {
+    connection.textContent = error instanceof Error ? error.message : String(error);
+    return false;
+  }
+}
+
+async function currentProjectSettings() {
+  try {
+    const payload = await callRpc('/rpc/get-project-settings');
+    return payload.settings;
+  } catch {
+    return null;
+  }
+}
+
+async function openProjectArchiveWindow() {
+  return openFileSelectWindow({
+    key: 'loadProject',
+    title: 'Load Project',
+    mode: 'open-project',
+    initialPath: '',
+    onSelect: async (selection) => {
+      if (selection?.path) {
+        await openProject(selection.path);
+      }
+    }
+  });
+}
+
+async function openProjectSaveNameWindow(settings) {
+  closeWindow(openMainWindows.get('saveProjectName'));
+  return new Promise((resolve) => {
+    openFileSelectWindow({
+      key: 'saveProjectName',
+      title: 'Save Project',
+      mode: 'save-project',
+      initialPath: settings.path,
+      onSelect: (selection) => {
+        closeWindow(openMainWindows.get('saveProjectName'));
+        resolve(selection || false);
+      },
+      onCancel: () => {
+        closeWindow(openMainWindows.get('saveProjectName'));
+        resolve(false);
+      }
+    }).catch((error) => {
+      connection.textContent = error instanceof Error ? error.message : String(error);
+      resolve(false);
+    });
+  });
+}
+
+async function openFileSelectWindow({ key, title, mode, initialPath, onSelect, onCancel }) {
+  const existing = openMainWindows.get(key);
+  if (existing?.isConnected) {
+    existing.style.zIndex = String(nextZIndex++);
+    existing.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return;
+  }
+  openMainWindows.delete(key);
+
+  const node = template.content.firstElementChild.cloneNode(true);
+  node.dataset.windowKey = key;
+  node.classList.add('file-select-window');
+  node.querySelector('h2').textContent = title;
+  node.querySelector('.close-button').addEventListener('click', () => {
+    onCancel?.();
+    closeWindow(node);
+  });
+  const maximize = node.querySelector('.maximize-button');
+  maximize.addEventListener('click', () => toggleMaximized(node, maximize));
+  node.addEventListener('pointerdown', () => {
+    node.style.zIndex = String(nextZIndex++);
+  });
+  makeDraggable(node);
+  node.style.left = `${32 + nextOffset}px`;
+  node.style.top = `${32 + nextOffset}px`;
+  node.style.zIndex = String(nextZIndex++);
+  nextOffset = (nextOffset + 28) % 140;
+  openMainWindows.set(key, node);
+
+  const content = node.querySelector('.window-content');
+  content.innerHTML = '<div class="loading">Loading files...</div>';
+  desktop.appendChild(node);
+
+  connection.textContent = 'Calling /rpc/list-filesystem';
+  const payload = await callRpc('/rpc/list-filesystem', initialPath ? { path: initialPath } : undefined);
+  const selector = new FileSelect({
+    payload,
+    mode,
+    fetchJson: callRpc,
+    onStatus: (message) => {
+      connection.textContent = message;
+    },
+    onSelect,
+    onCancel: () => {
+      onCancel?.();
+      closeWindow(node);
+    }
+  });
+  content.replaceChildren(selector.element());
+  connection.textContent = 'Ready';
 }
 
 async function openFileWindow(tabs) {
@@ -352,6 +601,10 @@ async function callRpc(endpoint, body = undefined) {
   return callRpcWithBody(endpoint, body);
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 async function callRpcWithBody(endpoint, body = undefined) {
   const options = { method: 'POST' };
   if (body !== undefined) {
@@ -370,32 +623,6 @@ async function callRpcWithBody(endpoint, body = undefined) {
     throw new Error(detail || `RPC failed with HTTP ${response.status}`);
   }
   return response.json();
-}
-
-function field(label, value) {
-  const row = document.createElement('div');
-  row.className = 'field-row';
-  const name = document.createElement('span');
-  name.textContent = label;
-  const data = document.createElement('strong');
-  data.textContent = String(value);
-  row.append(name, data);
-  return row;
-}
-
-function listField(label, values) {
-  const row = document.createElement('div');
-  row.className = 'field-row vertical';
-  const name = document.createElement('span');
-  name.textContent = label;
-  const list = document.createElement('ul');
-  values.forEach((value) => {
-    const item = document.createElement('li');
-    item.textContent = value;
-    list.appendChild(item);
-  });
-  row.append(name, list);
-  return row;
 }
 
 function renderError(error) {
@@ -456,27 +683,67 @@ function toggleMaximized(windowNode, button) {
   windowNode.style.zIndex = String(nextZIndex++);
 }
 
-function enableSplitter() {
-  let dragging = false;
+function newProjectIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 6h7l2 2h9v11H3V6z"/>
+      <path d="M12 13h6"/>
+      <path d="M15 10v6"/>
+    </svg>`;
+}
 
-  splitter.addEventListener('pointerdown', (event) => {
-    dragging = true;
-    splitter.setPointerCapture(event.pointerId);
-    document.body.classList.add('resizing-layout');
-  });
+function loadProjectIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 7h7l2 2h9v10H3V7z"/>
+      <path d="M12 14h6"/>
+      <path d="M15 11l3 3-3 3"/>
+    </svg>`;
+}
 
-  splitter.addEventListener('pointermove', (event) => {
-    if (!dragging) {
-      return;
-    }
-    const minLeft = 120;
-    const maxLeft = Math.max(minLeft, window.innerWidth - 360);
-    const width = Math.min(maxLeft, Math.max(minLeft, event.clientX));
-    document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
-  });
+function saveProjectIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 3h12l2 2v16H5V3z"/>
+      <path d="M8 3v6h8V3"/>
+      <path d="M8 15h8v6H8v-6z"/>
+    </svg>`;
+}
 
-  splitter.addEventListener('pointerup', () => {
-    dragging = false;
-    document.body.classList.remove('resizing-layout');
-  });
+function closeProjectIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 7h7l2 2h9v10H3V7z"/>
+      <path d="M9 12l6 6"/>
+      <path d="M15 12l-6 6"/>
+    </svg>`;
+}
+
+function projectSettingsIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/>
+      <path d="M19 12a7 7 0 0 0-.1-1.1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.9-1.1L14.3 3h-4.6l-.3 2.9A7 7 0 0 0 7.5 7L5.1 6l-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.1l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.9 1.1l.3 2.9h4.6l.3-2.9a7 7 0 0 0 1.9-1.1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1.1z"/>
+    </svg>`;
+}
+
+function filesystemIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 5h16v14H4V5z"/>
+      <path d="M8 9h8"/>
+      <path d="M8 12h8"/>
+      <path d="M8 15h5"/>
+    </svg>`;
+}
+
+function developmentIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 5h16v14H4V5z"/>
+      <path d="M4 10h16"/>
+      <path d="M8 15l-2-2 2-2"/>
+      <path d="M16 11l2 2-2 2"/>
+      <path d="M11 16l2-6"/>
+    </svg>`;
 }

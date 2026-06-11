@@ -4,6 +4,7 @@ export class ProjectOptions {
     this.fetchJson = options.fetchJson || defaultFetchJson;
     this.onStatus = options.onStatus || (() => {});
     this.onDone = options.onDone || (() => {});
+    this.noteText = options.note || '';
 
     const settings = this.payload.settings || {};
 
@@ -23,13 +24,29 @@ export class ProjectOptions {
     this.topModuleInput.name = 'topModuleName';
     this.topModuleInput.autocomplete = 'off';
     this.topModuleInput.spellcheck = false;
-    this.topModuleInput.value = settings.topModuleName || 'top';
+    this.topModuleInput.value = settings.topModuleName || '';
+
+    this.topModuleFileInput = document.createElement('input');
+    this.topModuleFileInput.type = 'text';
+    this.topModuleFileInput.name = 'topModuleFile';
+    this.topModuleFileInput.autocomplete = 'off';
+    this.topModuleFileInput.spellcheck = false;
+    this.topModuleFileInput.value = settings.topModuleFile || '';
+
+    this.mainTestFileInput = document.createElement('input');
+    this.mainTestFileInput.type = 'text';
+    this.mainTestFileInput.name = 'mainTestFile';
+    this.mainTestFileInput.autocomplete = 'off';
+    this.mainTestFileInput.spellcheck = false;
+    this.mainTestFileInput.value = settings.mainTestFile || '';
 
     const fields = document.createElement('div');
     fields.className = 'project-options-fields';
     fields.append(
       this.fieldRow('Project path', this.pathValue),
-      this.fieldRow('Top module name', this.topModuleInput)
+      this.fieldRow('Top module name', this.topModuleInput),
+      this.fieldRow('Top module file', this.topModuleFileInput),
+      this.fieldRow('Main test file', this.mainTestFileInput)
     );
 
     const actions = document.createElement('div');
@@ -44,8 +61,13 @@ export class ProjectOptions {
     this.ignoreButton.textContent = 'Ignore';
     this.ignoreButton.addEventListener('click', () => this.onDone());
 
+    this.note = document.createElement('div');
+    this.note.className = 'project-options-note';
+    this.note.textContent = this.noteText;
+    this.note.hidden = !this.noteText;
+
     actions.append(this.saveButton, this.ignoreButton);
-    this.root.append(this.message, fields, actions);
+    this.root.append(this.message, fields, this.note, actions);
     this.root.addEventListener('submit', (event) => this.save(event));
   }
 
@@ -69,7 +91,9 @@ export class ProjectOptions {
     this.onStatus('Calling /rpc/save-project-settings');
     try {
       const payload = await this.fetchJson('/rpc/save-project-settings', {
-        topModuleName: this.topModuleInput.value.trim()
+        topModuleName: this.topModuleInput.value.trim(),
+        topModuleFile: this.topModuleFileInput.value.trim(),
+        mainTestFile: this.mainTestFileInput.value.trim()
       });
       this.message.textContent = 'Saved';
       this.onStatus(`Project settings saved: ${payload.settings.path}`);

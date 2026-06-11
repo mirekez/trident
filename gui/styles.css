@@ -3,7 +3,8 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #eef2f5;
   color: #17202a;
-  --sidebar-width: 130px;
+  --toolbar-width: 68px;
+  --status-height: 24px;
 }
 
 * {
@@ -24,54 +25,35 @@ button {
   height: 100vh;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: var(--sidebar-width) 6px minmax(0, 1fr);
+  grid-template-columns: var(--toolbar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) var(--status-height);
   overflow: hidden;
 }
 
 .sidebar {
+  grid-row: 1 / 2;
   min-width: 0;
   overflow: auto;
   background: #ffffff;
   border-right: 1px solid #cfd9e2;
 }
 
-.sidebar-head {
-  display: grid;
-  gap: 12px;
-  padding: 10px;
-  border-bottom: 1px solid #e3e9ef;
-}
-
-.app-title {
-  font-size: 14px;
-  font-weight: 750;
-}
-
-.connection {
+.status-line {
+  grid-column: 1 / 3;
+  grid-row: 2 / 3;
   min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid #ccd6df;
-  border-radius: 6px;
+  min-height: var(--status-height);
+  padding: 3px 8px;
+  border-top: 1px solid #cfd9e2;
   background: #f8fafb;
-  text-align: center;
+  text-align: left;
   color: #40505f;
+  white-space: nowrap;
   overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
-}
-
-.splitter {
-  cursor: col-resize;
-  background: #c7d2dc;
-}
-
-.splitter:hover,
-.resizing-layout .splitter {
-  background: #8798a8;
-}
-
-.resizing-layout {
-  cursor: col-resize;
-  user-select: none;
+  line-height: 17px;
 }
 
 .rpc-launch-button,
@@ -85,13 +67,13 @@ button {
 }
 
 .rpc-launch-button {
-  width: 100%;
-  min-height: 46px;
-  padding: 0 8px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-color: #c99445;
   background: #ffffff;
-  font-size: 13px;
-  font-weight: 650;
 }
 
 .rpc-launch-button:hover,
@@ -101,11 +83,23 @@ button {
   border-color: #27a98d;
 }
 
+.rpc-launch-button svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .desktop {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
   position: relative;
   min-width: 0;
-  height: 100vh;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
   overflow: auto;
   background:
     linear-gradient(#dce5ec 1px, transparent 1px),
@@ -113,20 +107,28 @@ button {
   background-size: 28px 28px;
 }
 
-.launch-panel {
-  padding: 10px;
+.desktop::before {
+  content: "Trident IDE";
+  position: fixed;
+  top: 10px;
+  right: 16px;
+  color: rgba(32, 49, 63, 0.22);
+  font-size: 18px;
+  font-weight: 750;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.launch-title {
-  margin-bottom: 12px;
-  font-size: 13px;
-  font-weight: 700;
+.launch-panel {
+  padding: 10px 9px;
 }
 
 .launch-buttons {
   display: grid;
-  gap: 10px;
-  min-height: 46px;
+  grid-template-columns: 48px;
+  gap: 8px;
+  justify-content: center;
+  min-height: 48px;
   color: #607080;
 }
 
@@ -159,7 +161,17 @@ button {
 
 .internal-window.project-options-window {
   width: min(560px, calc(100% - 32px));
-  min-height: 280px;
+  min-height: 360px;
+}
+
+.internal-window.filesystem-window {
+  width: min(760px, calc(100% - 32px));
+  min-height: 520px;
+}
+
+.internal-window.file-select-window {
+  width: min(620px, calc(100% - 32px));
+  min-height: 470px;
 }
 
 .internal-window.maximized {
@@ -221,6 +233,15 @@ button {
   padding: 0;
 }
 
+.file-select-window .window-content {
+  padding: 0;
+}
+
+.filesystem-window .window-content {
+  height: calc(100% - 42px);
+  padding: 0;
+}
+
 .project-options-window .window-content {
   padding: 0;
 }
@@ -244,7 +265,9 @@ button {
 }
 
 .path-selector,
-.open-file {
+.open-file,
+.file-select {
+  position: relative;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   min-height: 428px;
@@ -252,7 +275,8 @@ button {
 }
 
 .path-selector-current,
-.open-file-current {
+.open-file-current,
+.file-select-current {
   padding: 12px 14px;
   border-bottom: 1px solid #d9e1e8;
   background: #f8fafb;
@@ -264,7 +288,9 @@ button {
 .path-selector-toolbar,
 .path-selector-create,
 .open-file-toolbar,
-.open-file-create {
+.open-file-create,
+.file-select-toolbar,
+.file-select-name {
   display: grid;
   grid-template-columns: auto auto 1fr;
   gap: 8px;
@@ -279,7 +305,11 @@ button {
 .open-file-toolbar button,
 .open-file-create button,
 .open-file-folder,
-.open-file-file {
+.open-file-file,
+.file-select-toolbar button,
+.file-select-name button,
+.file-select-folder,
+.file-select-file {
   border: 1px solid #b8c6d2;
   border-radius: 6px;
   background: #ffffff;
@@ -290,19 +320,23 @@ button {
 .path-selector-toolbar button,
 .path-selector-create button,
 .open-file-toolbar button,
-.open-file-create button {
+.open-file-create button,
+.file-select-toolbar button,
+.file-select-name button {
   min-height: 32px;
   padding: 0 12px;
 }
 
 .path-selector-toolbar button:disabled,
-.open-file-toolbar button:disabled {
+.open-file-toolbar button:disabled,
+.file-select-toolbar button:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
 .path-selector-list,
-.open-file-list {
+.open-file-list,
+.file-select-list {
   min-height: 0;
   overflow: auto;
   padding: 8px;
@@ -310,7 +344,9 @@ button {
 
 .path-selector-folder,
 .open-file-folder,
-.open-file-file {
+.open-file-file,
+.file-select-folder,
+.file-select-file {
   display: block;
   width: 100%;
   min-height: 34px;
@@ -329,26 +365,42 @@ button {
   color: #607080;
 }
 
+.file-select-folder::before {
+  content: "[dir] ";
+  color: #607080;
+}
+
+.file-select-file::before {
+  content: "[project] ";
+  color: #607080;
+}
+
 .path-selector-folder:hover,
 .path-selector-toolbar button:hover,
 .path-selector-create button:hover,
 .open-file-folder:hover,
 .open-file-file:hover,
 .open-file-toolbar button:hover,
-.open-file-create button:hover {
+.open-file-create button:hover,
+.file-select-folder:hover,
+.file-select-file:hover,
+.file-select-toolbar button:hover,
+.file-select-name button:hover {
   background: #eaf4f1;
   border-color: #27a98d;
 }
 
 .path-selector-create,
-.open-file-create {
+.open-file-create,
+.file-select-name {
   grid-template-columns: minmax(0, 1fr) auto;
   border-top: 1px solid #e5ebf0;
   border-bottom: 0;
 }
 
 .path-selector-create input,
-.open-file-create input {
+.open-file-create input,
+.file-select-name input {
   min-width: 0;
   min-height: 32px;
   padding: 0 10px;
@@ -359,16 +411,74 @@ button {
 .path-selector-message,
 .path-selector-empty,
 .open-file-message,
-.open-file-empty {
+.open-file-empty,
+.file-select-message,
+.file-select-empty {
   padding: 10px 12px;
   color: #607080;
 }
 
 .path-selector-message,
-.open-file-message {
+.open-file-message,
+.file-select-message {
   min-height: 36px;
   border-top: 1px solid #e5ebf0;
   overflow-wrap: anywhere;
+}
+
+.path-selector-question {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(23, 32, 42, 0.24);
+  z-index: 4;
+}
+
+.path-selector-question-dialog {
+  width: min(360px, calc(100% - 40px));
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #9fb0bf;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 30px rgba(23, 32, 42, 0.2);
+}
+
+.path-selector-question-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #20313f;
+}
+
+.path-selector-question-dialog input {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+}
+
+.path-selector-question-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.path-selector-question-actions button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+  cursor: pointer;
+}
+
+.path-selector-question-actions button:hover {
+  background: #eaf4f1;
+  border-color: #27a98d;
 }
 
 .field-row span {
@@ -390,8 +500,8 @@ button {
 
 .project-options {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-height: 238px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-height: 318px;
   background: #ffffff;
 }
 
@@ -446,6 +556,15 @@ button {
   border-top: 1px solid #e5ebf0;
 }
 
+.project-options-note {
+  padding: 9px 14px;
+  border-top: 1px solid #e5ebf0;
+  background: #fff7e6;
+  color: #7a4b00;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .project-options-actions button {
   min-height: 32px;
   padding: 0 14px;
@@ -459,6 +578,157 @@ button {
 .project-options-actions button:hover {
   background: #eaf4f1;
   border-color: #27a98d;
+}
+
+.filesystem-view {
+  display: grid;
+  grid-template-rows: 36px auto 32px minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 478px;
+  background: #ffffff;
+  color: #17202a;
+}
+
+.filesystem-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border-bottom: 1px solid #263746;
+  background: #172330;
+}
+
+.filesystem-tool-button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #415568;
+  border-radius: 4px;
+  background: #20313f;
+  color: #d8e2ea;
+  cursor: pointer;
+}
+
+.filesystem-tool-button:hover {
+  background: #2b465c;
+  border-color: #6aa6c8;
+}
+
+.filesystem-tool-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.filesystem-tool-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+.filesystem-toolbar-spacer {
+  width: 14px;
+}
+
+.filesystem-path {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5ebf0;
+  background: #ffffff;
+  overflow-wrap: anywhere;
+  color: #405264;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.filesystem-header,
+.filesystem-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) 150px 100px;
+  align-items: center;
+}
+
+.filesystem-header {
+  border-bottom: 1px solid #d9e1e8;
+  background: #f8fafb;
+  color: #607080;
+  font-size: 12px;
+}
+
+.filesystem-header div {
+  min-width: 0;
+  padding: 0 10px;
+  border-right: 1px solid #e5ebf0;
+}
+
+.filesystem-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 0;
+}
+
+.filesystem-row {
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  color: #17202a;
+  text-align: left;
+  cursor: default;
+}
+
+.filesystem-row:hover {
+  background: #eef6ff;
+}
+
+.filesystem-row.selected {
+  background: #cfe8ff;
+  outline: 1px solid #79b7e8;
+  outline-offset: -1px;
+}
+
+.filesystem-cell {
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.filesystem-cell.name::before {
+  display: inline-block;
+  width: 22px;
+  color: #607080;
+}
+
+.filesystem-row.folder .filesystem-cell.name::before {
+  content: "[ ]";
+}
+
+.filesystem-row.file .filesystem-cell.name::before {
+  content: "[F]";
+}
+
+.filesystem-cell.size {
+  text-align: right;
+  color: #405264;
+}
+
+.filesystem-message,
+.filesystem-empty {
+  padding: 10px 12px;
+  color: #607080;
+}
+
+.filesystem-message {
+  min-height: 36px;
+  border-top: 1px solid #e5ebf0;
+  overflow-wrap: anywhere;
 }
 
 .bar-chart {
@@ -516,6 +786,7 @@ button {
   background: #101820;
   color: #d8e2ea;
   overflow: hidden;
+  position: relative;
 }
 
 .development-toolbar {
@@ -592,6 +863,11 @@ button {
   background: #0f171f;
 }
 
+.development-log {
+  height: 100%;
+  min-height: 0;
+}
+
 .development-log-output,
 .console-output {
   height: 100%;
@@ -613,11 +889,99 @@ button {
   grid-template-rows: 1fr;
 }
 
+.development-prompt {
+  position: absolute;
+  inset: 36px 0 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(16, 24, 32, 0.68);
+}
+
+.development-prompt-dialog {
+  width: min(420px, calc(100% - 32px));
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #415568;
+  border-radius: 8px;
+  background: #172330;
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.3);
+}
+
+.development-prompt-title {
+  color: #f0f5f8;
+  font-weight: 700;
+}
+
+.development-prompt-dialog input {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #60788e;
+  border-radius: 6px;
+  background: #101820;
+  color: #f0f5f8;
+}
+
+.development-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.development-prompt-actions button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #60788e;
+  border-radius: 6px;
+  background: #20313f;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.development-prompt-actions button:hover {
+  background: #2b465c;
+}
+
 .console {
   display: grid;
   grid-template-rows: 1fr;
   height: 100%;
   min-height: 0;
+  position: relative;
+}
+
+.console-context-menu {
+  position: absolute;
+  z-index: 20;
+  display: none;
+  min-width: 112px;
+  padding: 4px;
+  border: 1px solid #415568;
+  border-radius: 4px;
+  background: #172330;
+  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.28);
+}
+
+.console-context-menu.visible {
+  display: grid;
+  gap: 2px;
+}
+
+.console-context-menu button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #d8e2ea;
+  text-align: left;
+  cursor: pointer;
+}
+
+.console-context-menu button:hover {
+  background: #2b465c;
 }
 
 .console-output:focus {
@@ -849,10 +1213,19 @@ button {
   background: #101820;
 }
 
-.code-editor-highlight,
+.code-editor-highlight-viewport,
 .code-editor-input {
   position: absolute;
   inset: 0;
+}
+
+.code-editor-highlight-viewport {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.code-editor-highlight,
+.code-editor-input {
   margin: 0;
   padding: 14px 16px;
   border: 0;
@@ -864,7 +1237,9 @@ button {
 }
 
 .code-editor-highlight {
-  pointer-events: none;
+  display: inline-block;
+  overflow: visible;
+  box-sizing: border-box;
   color: #d8e2ea;
 }
 
@@ -910,25 +1285,22 @@ button {
 
 @media (max-width: 620px) {
   .app-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: var(--toolbar-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--status-height);
   }
 
   .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid #cfd9e2;
-  }
-
-  .splitter {
-    display: none;
+    border-right: 1px solid #cfd9e2;
+    border-bottom: 0;
   }
 
   .desktop {
-    min-height: 520px;
+    min-height: 0;
   }
 
   .rpc-launch-button {
-    flex: 1 1 120px;
+    width: 48px;
+    height: 48px;
   }
 
   .internal-window.editor-window {

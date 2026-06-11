@@ -9,9 +9,14 @@ public:
     bool load(const std::filesystem::path& path);
     bool loaded() const;
     const std::filesystem::path& sourcePath() const;
+    std::filesystem::path toolsPath() const;
     std::string execute(const std::string& action,
                         const std::filesystem::path& projectPath,
-                        const std::string& topModuleName) const;
+                        const std::filesystem::path& binDir,
+                        const std::string& projectName,
+                        const std::string& topModuleName,
+                        const std::string& topModuleFile,
+                        const std::string& mainTestFile) const;
 
 private:
     std::filesystem::path sourcePath_;

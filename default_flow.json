@@ -1,13 +1,50 @@
 // Available variables:
 //   $(ToolsPath)    - build-local tools directory, normally build/tools/build-current
+//   $(BinDir)       - backend launch/binary working directory; GUI push folder is $(BinDir)/.push
 //   $(ProjectPath)  - current Trident project directory
+//   $(ProjectName)  - current Trident project archive name without .trident suffix
 //   $(CSourceList)  - shell-quoted C/C++ source and header files under the project
 //   $(SVSourceList) - shell-quoted Verilog/SystemVerilog files under the project
 //   ${TopModuleName} - top module name from project options
+//   $(TopModuleFile) - top module source file from project options
+//   $(MainTestFile)  - main test source file from project options
 {
   "actions": {
     "Compile": {
-      "command": "echo \"Compile project: $(ProjectPath)\"; echo \"Top module: ${TopModuleName}\"; echo \"Tools: $(ToolsPath)\"; echo \"C/C++ sources: $(CSourceList)\"; echo \"Verilog/SystemVerilog sources: $(SVSourceList)\"; if [ -x \"$(ToolsPath)/yosys/yosys\" ]; then \"$(ToolsPath)/yosys/yosys\" -V; else echo \"Yosys not built at $(ToolsPath)/yosys/yosys\"; fi"
+      "command": [
+        "CONDA_ROOT=\"$(BinDir)/.conda\"",
+        "if [ ! -d \"$CONDA_ROOT\" ]; then",
+        "  CONDA_ROOT=\"$(BinDir)/../.conda\"",
+        "fi",
+        "CONDA_ROOT=\"$(cd \"$CONDA_ROOT\" && pwd -P)\"",
+        "GCC_VERSION=\"$(ls -1 \"$CONDA_ROOT/lib/gcc/x86_64-conda-linux-gnu\" | sort -V | tail -1)\"",
+        "CPPHDL_INCLUDE_ROOT=\".trident/cpphdl_include\"",
+        "mkdir -p .trident",
+        "rm -rf \"$CPPHDL_INCLUDE_ROOT\"",
+        "mkdir -p \"$CPPHDL_INCLUDE_ROOT\"",
+        "cp -as --update=none \"$CONDA_ROOT/lib/gcc/x86_64-conda-linux-gnu/$GCC_VERSION/include/c++/.\" \"$CPPHDL_INCLUDE_ROOT/\"",
+        "cp -as --update=none \"$CONDA_ROOT/lib/gcc/x86_64-conda-linux-gnu/$GCC_VERSION/include/c++/x86_64-conda-linux-gnu/.\" \"$CPPHDL_INCLUDE_ROOT/\"",
+        "cp -as --update=none \"$CONDA_ROOT/lib/gcc/x86_64-conda-linux-gnu/$GCC_VERSION/include/.\" \"$CPPHDL_INCLUDE_ROOT/\"",
+        "cp -as --update=none \"$CONDA_ROOT/lib/clang/21/include/.\" \"$CPPHDL_INCLUDE_ROOT/\"",
+        "cp -as --update=none \"$CONDA_ROOT/x86_64-conda-linux-gnu/sysroot/usr/include/.\" \"$CPPHDL_INCLUDE_ROOT/\"",
+        "cp -as --update=none \"$CONDA_ROOT/include/.\" \"$CPPHDL_INCLUDE_ROOT/\"",
+        "cp -as --update=none \"$(ToolsPath)/cpphdl/include/.\" \"$CPPHDL_INCLUDE_ROOT/\"",
+        "ln -sfn ../linux \"$CPPHDL_INCLUDE_ROOT/bits/linux\"",
+        "unset CONDA_PREFIX",
+        "export PATH=\"$CONDA_ROOT/bin:$PATH\"",
+        "TOP_MODULE_FILE=\"$(TopModuleFile)\"",
+        "if [ -z \"$TOP_MODULE_FILE\" ]; then",
+        "  TOP_MODULE_FILE=\"${TopModuleName}.cpp\"",
+        "fi",
+        "\"$(ToolsPath)/cpphdl/cpphdl\" \"$TOP_MODULE_FILE\" \\",
+        "  -nostdinc \\",
+        "  -D_GLIBCXX_USE_TBB_PAR_BACKEND=0 \\",
+        "  -isystem \"$PWD/$CPPHDL_INCLUDE_ROOT\" \\",
+        "  -isystem \"$CONDA_ROOT/x86_64-conda-linux-gnu/sysroot/usr/include\" \\",
+        "  -isystem \"$CONDA_ROOT/lib/clang/21/include\" \\",
+        "  -iquote . \\",
+        "  --sysroot=\"$CONDA_ROOT/x86_64-conda-linux-gnu/sysroot\""
+      ]
     },
     "Build": {
       "command": "echo \"Build project: $(ProjectPath)\"; echo \"Tools: $(ToolsPath)\"; echo \"C/C++ sources: $(CSourceList)\"; echo \"Verilog/SystemVerilog sources: $(SVSourceList)\""
