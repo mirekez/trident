@@ -188,6 +188,52 @@ bool jsonHasKey(const std::string& body, const std::string& key) {
     return body.find("\"" + key + "\"") != std::string::npos;
 }
 
+std::string jsonArrayValue(const std::string& body, const std::string& key) {
+    const auto keyPos = body.find("\"" + key + "\"");
+    if (keyPos == std::string::npos) {
+        return {};
+    }
+    const auto colon = body.find(':', keyPos);
+    if (colon == std::string::npos) {
+        return {};
+    }
+    const auto arrayStart = body.find('[', colon + 1);
+    if (arrayStart == std::string::npos) {
+        return {};
+    }
+
+    bool inString = false;
+    bool escaped = false;
+    int depth = 0;
+    for (std::size_t i = arrayStart; i < body.size(); ++i) {
+        const char ch = body[i];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (inString && ch == '\\') {
+            escaped = true;
+            continue;
+        }
+        if (ch == '"') {
+            inString = !inString;
+            continue;
+        }
+        if (inString) {
+            continue;
+        }
+        if (ch == '[') {
+            ++depth;
+        } else if (ch == ']') {
+            --depth;
+            if (depth == 0) {
+                return body.substr(arrayStart, i - arrayStart + 1);
+            }
+        }
+    }
+    return {};
+}
+
 bool jsonBoolValue(const std::string& body, const std::string& key) {
     const auto keyPos = body.find("\"" + key + "\"");
     if (keyPos == std::string::npos) {
@@ -549,7 +595,9 @@ std::vector<PushCommand> pendingPushCommands(const std::filesystem::path& pushRo
                     "\",\"topModuleFile\":\"" +
                     jsonEscape(jsonStringValue(body, "topModuleFile")) +
                     "\",\"mainTestFile\":\"" +
-                    jsonEscape(jsonStringValue(body, "mainTestFile")) + "\"}\n"
+                    jsonEscape(jsonStringValue(body, "mainTestFile")) +
+                    "\",\"additionalSources\":\"" +
+                    jsonEscape(jsonStringValue(body, "additionalSources")) + "\"}\n"
             });
         }
     }
@@ -796,7 +844,7 @@ void Server::writeAgentSkill(const std::filesystem::path& root) const {
         << "$(ToolsPath)=" << compilationFlow_.toolsPath().string() << "\n"
         << "cpphdl_tool=" << (compilationFlow_.toolsPath() / "cpphdl").string() << "\n"
         << "```\n\n"
-        << "Use the backend push gateway to request GUI actions from scripts or agents.\n\n"
+        << "ALWAYS PUSH NEW SOURCES YOU CREATE! Use the backend push gateway to request GUI actions from scripts or agents.\n\n"
         << "Current push folder:\n\n"
         << "```text\n"
         << pushRoot_.string() << "\n"
@@ -814,25 +862,25 @@ void Server::writeAgentSkill(const std::filesystem::path& root) const {
         << "```\n\n"
         << "Supported push functions:\n\n"
         << "- `pushSource(filename)`: asks the GUI to open `filename` in `Development -> EditorTabs`.\n"
-        << "- `pushProjectSettings(topModuleName, topModuleFile, mainTestFile)`: asks the GUI to save project settings in the backend.\n\n"
+        << "- `pushProjectSettings(topModuleName, topModuleFile, mainTestFile, additionalSources)`: asks the GUI to save project settings in the backend.\n\n"
         << "`pushSource` JSON format:\n\n"
         << "```json\n"
         << "{\"filename\":\"/absolute/path/to/source.cpp\"}\n"
         << "```\n\n"
         << "`pushProjectSettings` JSON format:\n\n"
         << "```json\n"
-        << "{\"topModuleName\":\"Memory\",\"topModuleFile\":\"Memory.cpp\",\"mainTestFile\":\"MemoryTest.cpp\"}\n"
+        << "{\"topModuleName\":\"Memory\",\"topModuleFile\":\"Memory.cpp\",\"mainTestFile\":\"MemoryTest.cpp\",\"additionalSources\":\"MemoryHelper.cpp\"}\n"
         << "```\n\n"
         << "Parameter rules:\n\n"
         << "- `filename` must be an absolute or project-root-accessible source path.\n"
         << "- The file must be readable by the backend and allowed by the active project root.\n"
         << "- The Development window must be open in the GUI; otherwise the GUI ignores the command and reports status.\n\n"
-        << "After generating the cpphdl model source and the main test source, push the project settings with `pushProjectSettings` so Trident knows the top module name, top module file, and main test file.\n\n"
+        << "After generating the cpphdl model source and the main test source, push the project settings with `pushProjectSettings` so Trident knows the top module name, top module file, main test file, and additional sources.\n\n"
         << "Shell example:\n\n"
         << "```sh\n"
         << "printf '{\"filename\":\"/path/to/file.cpp\"}\\n' > "
         << pushRoot_.string() << "/pushSource_1.json\n"
-        << "printf '{\"topModuleName\":\"Memory\",\"topModuleFile\":\"Memory.cpp\",\"mainTestFile\":\"MemoryTest.cpp\"}\\n' > "
+        << "printf '{\"topModuleName\":\"Memory\",\"topModuleFile\":\"Memory.cpp\",\"mainTestFile\":\"MemoryTest.cpp\",\"additionalSources\":\"MemoryHelper.cpp\"}\\n' > "
         << pushRoot_.string() << "/pushProjectSettings_2.json\n"
         << "```\n";
 }
@@ -882,7 +930,13 @@ std::string Server::dispatch(const HttpRequest& request) {
         return jsonResponse(200, R"({"stopped":true})");
     }
     if (request.path == "/rpc/compile") {
-        return handleCompileRpc();
+        return handleFlowRpc("Compile");
+    }
+    if (request.path == "/rpc/synthesize") {
+        return handleFlowRpc("Synthesize");
+    }
+    if (request.path == "/rpc/run") {
+        return handleFlowRpc("Run");
     }
     if (request.path == "/rpc/list-folders" ||
         request.path == "/rpc/create-folder" ||
@@ -892,6 +946,7 @@ std::string Server::dispatch(const HttpRequest& request) {
         request.path == "/rpc/close-project" ||
         request.path == "/rpc/get-project-settings" ||
         request.path == "/rpc/save-project-settings" ||
+        request.path == "/rpc/save-window-layout" ||
         request.path == "/rpc/get-current-project-dir" ||
         request.path == "/rpc/get-opened-file-list" ||
         request.path == "/rpc/update-development-tabs" ||
@@ -914,25 +969,32 @@ std::string Server::dispatch(const HttpRequest& request) {
     return serveStatic(request.path);
 }
 
-std::string Server::handleCompileRpc() {
+std::string Server::handleFlowRpc(const std::string& action) {
     if (!compilationFlow_.loaded()) {
         return jsonResponse(500, R"({"error":"flow_not_loaded"})");
     }
     if (!project_) {
         return jsonResponse(500, R"({"error":"no_project"})");
     }
-    if (project_->topModuleName.empty() || project_->topModuleFile.empty()) {
+    if (action == "Compile" && (project_->topModuleName.empty() || project_->topModuleFile.empty())) {
         return jsonResponse(500, R"({"error":"compile_settings_required"})");
+    }
+    if (action == "Synthesize" && project_->topModuleName.empty()) {
+        return jsonResponse(500, R"({"error":"synthesize_settings_required"})");
+    }
+    if (action == "Run" && (project_->topModuleFile.empty() || project_->mainTestFile.empty())) {
+        return jsonResponse(500, R"({"error":"run_settings_required"})");
     }
 
     return jsonResponse(200, compilationFlow_.execute(
-        "Compile",
+        action,
         project_->path,
         pushRoot_.parent_path(),
         project_->projectName,
         project_->topModuleName,
         project_->topModuleFile,
-        project_->mainTestFile));
+        project_->mainTestFile,
+        project_->additionalSources));
 }
 
 std::string Server::handleProjectRpc(const HttpRequest& request) {
@@ -1032,10 +1094,28 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
         if (jsonHasKey(request.body, "mainTestFile")) {
             project_->mainTestFile = jsonStringValue(request.body, "mainTestFile");
         }
+        if (jsonHasKey(request.body, "additionalSources")) {
+            project_->additionalSources = jsonStringValue(request.body, "additionalSources");
+        }
         if (!project_->save()) {
             return jsonResponse(500, R"({"error":"save_project_failed"})");
         }
         return jsonResponse(200, "{\"settings\":" + project_->toJson() + ",\"saved\":true}");
+    }
+
+    if (request.path == "/rpc/save-window-layout") {
+        if (!project_) {
+            return jsonResponse(500, R"({"error":"no_project"})");
+        }
+        const auto windows = jsonArrayValue(request.body, "windows");
+        if (windows.empty()) {
+            return jsonResponse(500, R"({"error":"invalid_window_layout"})");
+        }
+        project_->windowsJson = windows;
+        if (!project_->save()) {
+            return jsonResponse(500, R"({"error":"save_project_failed"})");
+        }
+        return jsonResponse(200, "{\"windows\":" + project_->windowsJson + ",\"saved\":true}");
     }
 
     if (request.path == "/rpc/get-current-project-dir") {

@@ -58,7 +58,8 @@ button {
 
 .rpc-launch-button,
 .close-button,
-.maximize-button {
+.maximize-button,
+.always-on-top-button {
   border: 1px solid #b8c6d2;
   border-radius: 6px;
   background: #ffffff;
@@ -78,7 +79,8 @@ button {
 
 .rpc-launch-button:hover,
 .close-button:hover,
-.maximize-button:hover {
+.maximize-button:hover,
+.always-on-top-button:hover {
   background: #eaf4f1;
   border-color: #27a98d;
 }
@@ -161,7 +163,7 @@ button {
 
 .internal-window.project-options-window {
   width: min(560px, calc(100% - 32px));
-  min-height: 360px;
+  min-height: 460px;
 }
 
 .internal-window.filesystem-window {
@@ -209,10 +211,35 @@ button {
 }
 
 .close-button,
-.maximize-button {
+.maximize-button,
+.always-on-top-button {
   width: 28px;
   height: 26px;
   line-height: 1;
+}
+
+.maximize-button,
+.always-on-top-button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.maximize-button svg,
+.always-on-top-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.internal-window.always-on-top .always-on-top-button {
+  background: #eaf4f1;
+  border-color: #27a98d;
+  color: #13745f;
 }
 
 .window-content {
@@ -375,6 +402,19 @@ button {
   color: #607080;
 }
 
+.file-select.select-files .file-select-file::before {
+  content: "[F] ";
+}
+
+.file-select-file input {
+  margin: 0 8px 0 0;
+  vertical-align: middle;
+}
+
+.file-select-file span {
+  vertical-align: middle;
+}
+
 .path-selector-folder:hover,
 .path-selector-toolbar button:hover,
 .path-selector-create button:hover,
@@ -501,7 +541,7 @@ button {
 .project-options {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
-  min-height: 318px;
+  min-height: 418px;
   background: #ffffff;
 }
 
@@ -532,6 +572,7 @@ button {
 }
 
 .project-options-row input,
+.project-options-row textarea,
 .project-options-readonly {
   min-width: 0;
   min-height: 34px;
@@ -540,6 +581,39 @@ button {
   border-radius: 6px;
   color: #17202a;
   background: #ffffff;
+}
+
+.project-options-row textarea {
+  resize: vertical;
+  min-height: 72px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.project-options-composite {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.project-options-composite button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+  cursor: pointer;
+}
+
+.project-options-composite button:hover {
+  background: #eaf4f1;
+  border-color: #27a98d;
+}
+
+.project-options-composite button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .project-options-readonly {

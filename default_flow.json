@@ -8,8 +8,45 @@
 //   ${TopModuleName} - top module name from project options
 //   $(TopModuleFile) - top module source file from project options
 //   $(MainTestFile)  - main test source file from project options
+//   $(AdditionalSources) - additional source files from project options
 {
   "actions": {
+    "Run": {
+      "command": [
+        "CONDA_ROOT=\"$(BinDir)/.conda\"",
+        "if [ ! -d \"$CONDA_ROOT\" ]; then",
+        "  CONDA_ROOT=\"$(BinDir)/../.conda\"",
+        "fi",
+        "CONDA_ROOT=\"$(cd \"$CONDA_ROOT\" && pwd -P)\"",
+        "RUN_DIR=\".trident/run\"",
+        "RUN_EXE=\"$RUN_DIR/trident_run\"",
+        "mkdir -p \"$RUN_DIR\"",
+        "export PATH=\"$CONDA_ROOT/bin:$PATH\"",
+        "RUN_SOURCES=()",
+        "add_run_source() {",
+        "  case \"$1\" in",
+        "    *.c|*.cc|*.cpp|*.cxx) RUN_SOURCES+=(\"$1\") ;;",
+        "  esac",
+        "}",
+        "add_run_source \"$(MainTestFile)\"",
+        "add_run_source \"$(TopModuleFile)\"",
+        "for source in $(AdditionalSources); do",
+        "  add_run_source \"$source\"",
+        "done",
+        "if [ ${#RUN_SOURCES[@]} -eq 0 ]; then",
+        "  echo \"Run failed: no C/C++ source files selected.\"",
+        "  exit 1",
+        "fi",
+        "\"$CONDA_ROOT/bin/clang++\" \\",
+        "  -std=c++26 \\",
+        "  -DSYNTHESIS \\",
+        "  -I\"$(ToolsPath)/cpphdl/include\" \\",
+        "  -I. \\",
+        "  \"${RUN_SOURCES[@]}\" \\",
+        "  -o \"$RUN_EXE\"",
+        "\"$RUN_EXE\""
+      ]
+    },
     "Compile": {
       "command": [
         "CONDA_ROOT=\"$(BinDir)/.conda\"",
@@ -36,7 +73,7 @@
         "if [ -z \"$TOP_MODULE_FILE\" ]; then",
         "  TOP_MODULE_FILE=\"${TopModuleName}.cpp\"",
         "fi",
-        "\"$(ToolsPath)/cpphdl/cpphdl\" \"$TOP_MODULE_FILE\" \\",
+        "\"$(ToolsPath)/cpphdl/cpphdl\" \"$TOP_MODULE_FILE\" $(AdditionalSources) \\",
         "  -nostdinc \\",
         "  -D_GLIBCXX_USE_TBB_PAR_BACKEND=0 \\",
         "  -isystem \"$PWD/$CPPHDL_INCLUDE_ROOT\" \\",
@@ -44,6 +81,13 @@
         "  -isystem \"$CONDA_ROOT/lib/clang/21/include\" \\",
         "  -iquote . \\",
         "  --sysroot=\"$CONDA_ROOT/x86_64-conda-linux-gnu/sysroot\""
+      ]
+    },
+    "Synthesize": {
+      "command": [
+        "\"$(ToolsPath)/yosys/yosys\" \\",
+        "  -m \"$(ToolsPath)/yosys/share/plugins/slang.so\" \\",
+        "  -p \"read_slang -top ${TopModuleName} generated/*.sv; synth; write_json output.json\""
       ]
     },
     "Build": {

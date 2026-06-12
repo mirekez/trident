@@ -66,14 +66,16 @@ foreach(version_line IN LISTS TRIDENT_VERSION_LINES)
     if(NOT version_match)
         message(FATAL_ERROR "Invalid tools/versions line: ${version_line}")
     endif()
-    set("TRIDENT_TOOL_VERSION_${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}")
+    string(MAKE_C_IDENTIFIER "${CMAKE_MATCH_1}" version_key)
+    set("TRIDENT_TOOL_VERSION_${version_key}" "${CMAKE_MATCH_2}")
 endforeach()
 
 function(trident_tool_version out_var tool_name)
-    if(NOT DEFINED TRIDENT_TOOL_VERSION_${tool_name})
+    string(MAKE_C_IDENTIFIER "${tool_name}" tool_key)
+    if(NOT DEFINED TRIDENT_TOOL_VERSION_${tool_key})
         message(FATAL_ERROR "Missing ${tool_name} pin in ${TRIDENT_VERSIONS_FILE}")
     endif()
-    set(${out_var} "${TRIDENT_TOOL_VERSION_${tool_name}}" PARENT_SCOPE)
+    set(${out_var} "${TRIDENT_TOOL_VERSION_${tool_key}}" PARENT_SCOPE)
 endfunction()
 
 function(trident_source_args out_var tool_name tool_url)
@@ -103,6 +105,11 @@ function(trident_cmake_tool tool_name tool_url)
         set(tool_build_command
             "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
             "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR> --target cpphdl hdlcpp
+        )
+    elseif(tool_name STREQUAL "slang")
+        set(tool_build_command
+            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR> --parallel 1
         )
     else()
         set(tool_build_command
@@ -139,11 +146,10 @@ function(trident_cmake_tool tool_name tool_url)
     )
 endfunction()
 
-trident_tool_version(SLANG_VERSION slang)
+trident_tool_version(CPPHDL_SLANG_VERSION slang)
 ExternalProject_Add(cpphdl_slang
     GIT_REPOSITORY https://github.com/MikePopoloski/slang.git
-    GIT_TAG "${SLANG_VERSION}"
-    GIT_SHALLOW TRUE
+    GIT_TAG "${CPPHDL_SLANG_VERSION}"
     GIT_PROGRESS TRUE
     EXCLUDE_FROM_ALL TRUE
     SOURCE_DIR "${TOOLS_SOURCE_DIR}/cpphdl/hdlcpp/slang"
@@ -230,4 +236,61 @@ ExternalProject_Add(yosys
     USES_TERMINAL_BUILD TRUE
 )
 
-add_custom_target(trident_tools DEPENDS cpphdl scalepnr yosys)
+trident_tool_version(YOSYS_SLANG_VERSION yosys-slang)
+set(YOSYS_SLANG_SOURCE_DIR "${TOOLS_SOURCE_DIR}/yosys-slang")
+if(EXISTS "${YOSYS_SLANG_SOURCE_DIR}/.git")
+    set(yosys_slang_source_args
+        SOURCE_DIR "${YOSYS_SLANG_SOURCE_DIR}"
+        DOWNLOAD_COMMAND ""
+        UPDATE_COMMAND
+            "${GIT_EXECUTABLE}" -C "${YOSYS_SLANG_SOURCE_DIR}" checkout --detach "${YOSYS_SLANG_VERSION}"
+            COMMAND "${GIT_EXECUTABLE}" -C "${YOSYS_SLANG_SOURCE_DIR}" submodule update --init third_party/slang third_party/fmt
+    )
+else()
+    set(yosys_slang_source_args
+        GIT_REPOSITORY https://github.com/povik/yosys-slang.git
+        GIT_TAG "${YOSYS_SLANG_VERSION}"
+        GIT_PROGRESS TRUE
+        GIT_SUBMODULES third_party/slang third_party/fmt
+        GIT_SUBMODULES_RECURSE TRUE
+        SOURCE_DIR "${YOSYS_SLANG_SOURCE_DIR}"
+    )
+endif()
+
+ExternalProject_Add(yosys_slang
+    ${yosys_slang_source_args}
+    EXCLUDE_FROM_ALL TRUE
+    DEPENDS yosys
+    BINARY_DIR "${TOOLS_BUILD_DIR}/yosys-slang"
+    INSTALL_DIR "${TOOLS_INSTALL_DIR}/yosys-slang"
+    CMAKE_COMMAND "${_TRIDENT_CONDA_BIN}/cmake"
+    CMAKE_GENERATOR "Unix Makefiles"
+    CMAKE_ARGS
+        ${TRIDENT_COMMON_CMAKE_ARGS}
+        -DBUILD_AS_PLUGIN=ON
+        -DYOSYS_CONFIG=${TOOLS_BUILD_DIR}/yosys/yosys-config
+    CONFIGURE_COMMAND
+        "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+        "${_TRIDENT_CONDA_BIN}/cmake"
+        -G "Unix Makefiles"
+        ${TRIDENT_COMMON_CMAKE_ARGS}
+        -DBUILD_AS_PLUGIN=ON
+        -DYOSYS_CONFIG=${TOOLS_BUILD_DIR}/yosys/yosys-config
+        -S <SOURCE_DIR>
+        -B <BINARY_DIR>
+    BUILD_COMMAND
+        "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+        "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR> --target yosys-slang --parallel 1
+        COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E make_directory "${TOOLS_BUILD_DIR}/yosys/share/plugins"
+        COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E copy_if_different
+            <BINARY_DIR>/slang.so
+            "${TOOLS_BUILD_DIR}/yosys/share/plugins/slang.so"
+    INSTALL_COMMAND ""
+    STEP_TARGETS download update configure build
+    USES_TERMINAL_DOWNLOAD TRUE
+    USES_TERMINAL_UPDATE TRUE
+    USES_TERMINAL_CONFIGURE TRUE
+    USES_TERMINAL_BUILD TRUE
+)
+
+add_custom_target(trident_tools DEPENDS cpphdl scalepnr yosys yosys_slang)

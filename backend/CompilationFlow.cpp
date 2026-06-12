@@ -306,7 +306,8 @@ std::string CompilationFlow::execute(const std::string& action,
                                      const std::string& projectName,
                                      const std::string& topModuleName,
                                      const std::string& topModuleFile,
-                                     const std::string& mainTestFile) const {
+                                     const std::string& mainTestFile,
+                                     const std::string& additionalSources) const {
     const auto commandIt = commands_.find(action);
     if (commandIt == commands_.end()) {
         return "{\"error\":\"unknown_flow_action\",\"action\":\"" + jsonEscape(action) + "\"}";
@@ -330,6 +331,8 @@ std::string CompilationFlow::execute(const std::string& action,
     replaceAll(command, "${TopModuleFile}", topModuleFile);
     replaceAll(command, "$(MainTestFile)", mainTestFile);
     replaceAll(command, "${MainTestFile}", mainTestFile);
+    replaceAll(command, "$(AdditionalSources)", additionalSources);
+    replaceAll(command, "${AdditionalSources}", additionalSources);
 
     const std::string script =
         "cd " + shellQuote(projectString) + " && {\n" + command +

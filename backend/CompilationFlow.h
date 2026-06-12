@@ -16,7 +16,8 @@ public:
                         const std::string& projectName,
                         const std::string& topModuleName,
                         const std::string& topModuleFile,
-                        const std::string& mainTestFile) const;
+                        const std::string& mainTestFile,
+                        const std::string& additionalSources) const;
 
 private:
     std::filesystem::path sourcePath_;

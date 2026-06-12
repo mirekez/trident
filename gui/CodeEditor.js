@@ -59,6 +59,9 @@ export class CodeEditor extends FocusedControl {
       this.scheduleHighlight();
     });
     this.textarea.addEventListener('scroll', () => this.syncScroll());
+    this.textarea.addEventListener('copy', (event) => this.handleCopy(event));
+    this.textarea.addEventListener('cut', (event) => this.handleCut(event));
+    this.textarea.addEventListener('paste', (event) => this.handlePaste(event));
     this.textarea.addEventListener('keydown', (event) => this.handleKeydown(event));
 
     this.renderHighlight();
@@ -108,6 +111,52 @@ export class CodeEditor extends FocusedControl {
     this.value = this.textarea.value;
     this.onChange(this.value);
     this.scheduleHighlight();
+  }
+
+  handleCopy(event) {
+    const selected = this.selectedText();
+    if (!selected) {
+      return;
+    }
+    event.clipboardData?.setData('text/plain', selected);
+    event.preventDefault();
+  }
+
+  handleCut(event) {
+    const selected = this.selectedText();
+    if (!selected) {
+      return;
+    }
+    event.clipboardData?.setData('text/plain', selected);
+    event.preventDefault();
+    this.replaceSelection('');
+  }
+
+  handlePaste(event) {
+    const text = event.clipboardData?.getData('text/plain');
+    if (text === undefined) {
+      return;
+    }
+    event.preventDefault();
+    this.replaceSelection(text);
+  }
+
+  selectedText() {
+    return this.textarea.value.slice(this.textarea.selectionStart, this.textarea.selectionEnd);
+  }
+
+  replaceSelection(text) {
+    const start = this.textarea.selectionStart;
+    const end = this.textarea.selectionEnd;
+    const before = this.textarea.value.slice(0, start);
+    const after = this.textarea.value.slice(end);
+    this.textarea.value = `${before}${text}${after}`;
+    const cursor = start + text.length;
+    this.textarea.selectionStart = this.textarea.selectionEnd = cursor;
+    this.value = this.textarea.value;
+    this.onChange(this.value);
+    this.scheduleHighlight();
+    this.syncScroll();
   }
 
   getValue() {

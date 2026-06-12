@@ -39,7 +39,7 @@ private:
     void writeAgentSkill(const std::filesystem::path& root) const;
     std::string dispatch(const HttpRequest& request);
     std::string handleProjectRpc(const HttpRequest& request);
-    std::string handleCompileRpc();
+    std::string handleFlowRpc(const std::string& action);
     std::filesystem::path projectRoot() const;
     std::string serveStatic(const std::string& requestPath) const;
     std::string jsonResponse(int status, const std::string& body) const;

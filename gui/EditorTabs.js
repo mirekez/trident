@@ -72,9 +72,8 @@ export class EditorTabs extends FocusedControl {
   }
 
   async saveFocusedEditor() {
-    const focusedEditor = this.focusedChild();
-    const entry = this.tabs.find((tab) => tab.editor === focusedEditor) ||
-      this.tabs.find((tab) => tab.id === this.activeId);
+    const entry = this.tabs.find((tab) => tab.id === this.activeId) ||
+      this.tabs.find((tab) => tab.editor === this.focusedChild());
     if (!entry) {
       this.onStatus('No focused editor');
       return;

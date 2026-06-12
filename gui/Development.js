@@ -7,7 +7,9 @@ const ENDPOINTS = {
   files: '/rpc/get-opened-file-list',
   log: '/rpc/refresh-dev-log',
   loadFile: '/rpc/load-file',
-  compile: '/rpc/compile'
+  run: '/rpc/run',
+  compile: '/rpc/compile',
+  synthesize: '/rpc/synthesize'
 };
 
 export class Development extends FocusedControl {
@@ -30,7 +32,9 @@ export class Development extends FocusedControl {
       this.toolbarButton('Save file', saveIcon(), () => this.saveFocusedFile()),
       this.toolbarButton('Save all', saveAllIcon(), () => this.saveAllFiles()),
       this.toolbarSpacer(),
-      this.toolbarButton('Compile', compileIcon(), () => this.compile())
+      this.toolbarButton('Run', runIcon(), () => this.run()),
+      this.toolbarButton('Compile', compileIcon(), () => this.compile()),
+      this.toolbarButton('Synthesize', synthesizeIcon(), () => this.synthesize())
     );
 
     this.editorTabs = new EditorTabs({
@@ -110,45 +114,96 @@ export class Development extends FocusedControl {
   }
 
   async compile() {
+    await this.executeFlow({
+      action: 'Compile',
+      endpoint: ENDPOINTS.compile,
+      runningText: 'Compiling...',
+      missingError: 'compile_settings_required',
+      missingText: 'Compile cancelled: Top module name and Top module file are required.',
+      missingStatus: 'Compile settings required',
+      successStatus: 'Compile finished',
+      failureStatus: 'Compile failed',
+      rpcErrorStatus: 'Compile RPC error',
+      settingsKind: 'compile'
+    });
+  }
+
+  async run() {
+    await this.executeFlow({
+      action: 'Run',
+      endpoint: ENDPOINTS.run,
+      runningText: 'Running...',
+      missingError: 'run_settings_required',
+      missingText: 'Run cancelled: Top module file and Main test file are required.',
+      missingStatus: 'Run settings required',
+      successStatus: 'Run finished',
+      failureStatus: 'Run failed',
+      rpcErrorStatus: 'Run RPC error',
+      settingsKind: 'run'
+    });
+  }
+
+  async synthesize() {
+    await this.executeFlow({
+      action: 'Synthesize',
+      endpoint: ENDPOINTS.synthesize,
+      runningText: 'Synthesizing...',
+      missingError: 'synthesize_settings_required',
+      missingText: 'Synthesize cancelled: Top module name is required.',
+      missingStatus: 'Synthesize settings required',
+      successStatus: 'Synthesize finished',
+      failureStatus: 'Synthesize failed',
+      rpcErrorStatus: 'Synthesize RPC error',
+      settingsKind: 'synthesize'
+    });
+  }
+
+  async executeFlow(options) {
     try {
-      const ready = await this.ensureCompileSettings();
+      const ready = await this.ensureFlowSettings(options.settingsKind);
       if (!ready) {
-        this.log.setText('Compile cancelled: Top module name and Top module file are required.');
-        this.onStatus('Compile settings required');
+        this.log.setText(options.missingText);
+        this.onStatus(options.missingStatus);
         return;
       }
 
-      this.onStatus(`Calling ${ENDPOINTS.compile}`);
-      this.log.setText('Compiling...');
-      const payload = await this.fetchJson(ENDPOINTS.compile);
+      this.onStatus(`Calling ${options.endpoint}`);
+      this.log.setText(options.runningText);
+      const payload = await this.fetchJson(options.endpoint);
       const header = [
-        `Action: ${payload.action || 'Compile'}`,
+        `Action: ${payload.action || options.action}`,
         `Exit code: ${payload.exitCode}`,
         payload.command ? `Command: ${payload.command}` : ''
       ].filter(Boolean).join('\n');
       this.log.setText(`${header}\n\n${payload.output || ''}`);
-      this.onStatus(payload.exitCode === 0 ? 'Compile finished' : 'Compile failed');
+      this.onStatus(payload.exitCode === 0 ? options.successStatus : options.failureStatus);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message === 'compile_settings_required' || message === 'top_module_required') {
-        this.onProjectSettingsRequired();
-        this.log.setText('Compile cancelled: Top module name and Top module file are required.');
-        this.onStatus('Compile settings required');
+      if (message === options.missingError || message === 'compile_settings_required' || message === 'synthesize_settings_required' || message === 'top_module_required') {
+        this.onProjectSettingsRequired(options.settingsKind);
+        this.log.setText(options.missingText);
+        this.onStatus(options.missingStatus);
         return;
       }
       this.log.setText(error instanceof Error ? error.message : String(error));
-      this.onStatus('Compile RPC error');
+      this.onStatus(options.rpcErrorStatus);
     }
   }
 
-  async ensureCompileSettings() {
+  async ensureFlowSettings(kind) {
     this.onStatus('Checking project settings');
     const payload = await this.fetchJson('/rpc/get-project-settings');
-    if (payload.settings?.topModuleName && payload.settings?.topModuleFile) {
+    const settings = payload.settings || {};
+    const ready = kind === 'run'
+      ? settings.topModuleFile && settings.mainTestFile
+      : kind === 'synthesize'
+        ? settings.topModuleName
+        : settings.topModuleName && settings.topModuleFile;
+    if (ready) {
       return true;
     }
 
-    this.onProjectSettingsRequired();
+    this.onProjectSettingsRequired(kind);
     return false;
   }
 
@@ -277,5 +332,26 @@ function compileIcon() {
       <path d="M13 5l6 6"/>
       <path d="M14 4l6 6"/>
       <path d="M5 18l3 3"/>
+    </svg>`;
+}
+
+function runIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5v14l11-7-11-7z"/>
+    </svg>`;
+}
+
+function synthesizeIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="5" width="5" height="5" rx="1"/>
+      <rect x="15" y="5" width="5" height="5" rx="1"/>
+      <rect x="4" y="14" width="5" height="5" rx="1"/>
+      <rect x="15" y="14" width="5" height="5" rx="1"/>
+      <path d="M9 7.5h6"/>
+      <path d="M9 16.5h6"/>
+      <path d="M6.5 10v4"/>
+      <path d="M17.5 10v4"/>
     </svg>`;
 }

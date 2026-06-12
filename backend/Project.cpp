@@ -60,10 +60,57 @@ std::string jsonStringValue(const std::string& body, const std::string& key) {
     return value;
 }
 
+std::string jsonArrayValue(const std::string& body, const std::string& key) {
+    const auto keyPos = body.find("\"" + key + "\"");
+    if (keyPos == std::string::npos) {
+        return {};
+    }
+    const auto colon = body.find(':', keyPos);
+    if (colon == std::string::npos) {
+        return {};
+    }
+    const auto arrayStart = body.find('[', colon + 1);
+    if (arrayStart == std::string::npos) {
+        return {};
+    }
+
+    bool inString = false;
+    bool escaped = false;
+    int depth = 0;
+    for (std::size_t i = arrayStart; i < body.size(); ++i) {
+        const char ch = body[i];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (inString && ch == '\\') {
+            escaped = true;
+            continue;
+        }
+        if (ch == '"') {
+            inString = !inString;
+            continue;
+        }
+        if (inString) {
+            continue;
+        }
+        if (ch == '[') {
+            ++depth;
+        } else if (ch == ']') {
+            --depth;
+            if (depth == 0) {
+                return body.substr(arrayStart, i - arrayStart + 1);
+            }
+        }
+    }
+    return {};
+}
+
 } // namespace
 
 Project::Project(std::filesystem::path projectPath)
-    : path(std::filesystem::weakly_canonical(std::move(projectPath))) {
+    : path(std::filesystem::weakly_canonical(std::move(projectPath))),
+      mainTestFile("main.cpp") {
 }
 
 bool Project::load(const std::filesystem::path& projectPath, Project& project) {
@@ -85,7 +132,15 @@ bool Project::load(const std::filesystem::path& projectPath, Project& project) {
         project.topModuleName = topModuleName;
     }
     project.topModuleFile = jsonStringValue(json, "topModuleFile");
-    project.mainTestFile = jsonStringValue(json, "mainTestFile");
+    const auto mainTestFile = jsonStringValue(json, "mainTestFile");
+    if (!mainTestFile.empty()) {
+        project.mainTestFile = mainTestFile;
+    }
+    project.additionalSources = jsonStringValue(json, "additionalSources");
+    const auto windowsJson = jsonArrayValue(json, "windows");
+    if (!windowsJson.empty()) {
+        project.windowsJson = windowsJson;
+    }
     std::size_t pos = 0;
     while ((pos = json.find("\"path\":\"", pos)) != std::string::npos) {
         pos += 8;
@@ -108,7 +163,9 @@ std::string Project::toJson() const {
          << jsonEscape(projectName) << "\",\"topModuleName\":\""
          << jsonEscape(topModuleName) << "\",\"topModuleFile\":\""
          << jsonEscape(topModuleFile) << "\",\"mainTestFile\":\""
-         << jsonEscape(mainTestFile) << "\",\"openedFiles\":[";
+         << jsonEscape(mainTestFile) << "\",\"additionalSources\":\""
+         << jsonEscape(additionalSources) << "\",\"windows\":"
+         << (windowsJson.empty() ? "[]" : windowsJson) << ",\"openedFiles\":[";
     for (std::size_t i = 0; i < openedFiles.size(); ++i) {
         if (i != 0) {
             json << ',';

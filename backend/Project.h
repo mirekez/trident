@@ -11,6 +11,8 @@ struct Project {
     std::string topModuleName;
     std::string topModuleFile;
     std::string mainTestFile;
+    std::string additionalSources;
+    std::string windowsJson = "[]";
 
     explicit Project(std::filesystem::path projectPath);
 

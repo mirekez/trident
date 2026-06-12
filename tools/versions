@@ -1,5 +1,6 @@
 cpphdl 7ec5a98e895df78aa16ecd9307bf7ecf661826de
 scalepnr 374c544a5d3f7dd3d02c470cea9e3f5c109cf6e6
 yosys d7093743b86929a44c9cd58aea7a71bfb164b930
-slang v11.0
+slang 7ddf4059f79eff508dd486eb42fd650cdf320d52
+yosys-slang ba1859ec817f63e2845fa9fa0ecb25dc7ab76a0c
 cmake v3.30.5

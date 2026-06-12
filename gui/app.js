@@ -62,12 +62,17 @@ const rpcConfig = {
 
 let nextOffset = 0;
 let nextZIndex = 10;
+let nextPinnedZIndex = 100000;
 let activeDevelopment = null;
 const openMainWindows = new Map();
+const restorableWindows = new Set(['development', 'filesystem']);
+let layoutSaveTimer = 0;
+let suppressLayoutSave = false;
 
 createRpcButtons();
 installPushHandlers();
 startPushEvents();
+restoreCurrentProjectLayout();
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') {
@@ -106,11 +111,12 @@ async function createWindow(key, renderOptions = {}) {
   }
   const existing = openMainWindows.get(key);
   if (existing?.isConnected) {
-    existing.style.zIndex = String(nextZIndex++);
+    bringWindowToFront(existing);
     existing.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     return;
   }
   openMainWindows.delete(key);
+  const layout = renderOptions.layout || null;
 
   const node = template.content.firstElementChild.cloneNode(true);
   node.dataset.windowKey = key;
@@ -118,24 +124,43 @@ async function createWindow(key, renderOptions = {}) {
   const content = node.querySelector('.window-content');
   const close = node.querySelector('.close-button');
   const maximize = node.querySelector('.maximize-button');
+  const alwaysOnTop = node.querySelector('.always-on-top-button');
+  initializeWindowButtons(node, maximize, alwaysOnTop);
 
   if (config.windowClass) {
     node.classList.add(config.windowClass);
   }
   title.textContent = config.title;
   content.innerHTML = '<div class="loading">Loading RPC response...</div>';
-  node.style.left = `${32 + nextOffset}px`;
-  node.style.top = `${32 + nextOffset}px`;
-  node.style.zIndex = String(nextZIndex++);
-  nextOffset = (nextOffset + 28) % 140;
+  node.style.left = `${Number.isFinite(layout?.x) ? Math.max(0, layout.x) : 32 + nextOffset}px`;
+  node.style.top = `${Number.isFinite(layout?.y) ? Math.max(0, layout.y) : 32 + nextOffset}px`;
+  if (Number.isFinite(layout?.width) && !layout?.maximized) {
+    node.style.width = `${Math.max(260, layout.width)}px`;
+  }
+  if (Number.isFinite(layout?.height) && !layout?.maximized) {
+    node.style.height = `${Math.max(180, layout.height)}px`;
+  }
+  if (layout?.maximized) {
+    node.classList.add('maximized');
+    setMaximizeButtonState(maximize, true);
+  }
+  if (layout?.alwaysOnTop) {
+    node.classList.add('always-on-top');
+    setAlwaysOnTopButtonState(alwaysOnTop, true);
+  }
+  bringWindowToFront(node);
+  if (!layout) {
+    nextOffset = (nextOffset + 28) % 140;
+  }
   openMainWindows.set(key, node);
 
   close.addEventListener('click', () => {
     closeWindow(node);
   });
   maximize.addEventListener('click', () => toggleMaximized(node, maximize));
+  alwaysOnTop.addEventListener('click', () => toggleAlwaysOnTop(node, alwaysOnTop));
   node.addEventListener('pointerdown', () => {
-    node.style.zIndex = String(nextZIndex++);
+    bringWindowToFront(node);
   });
   makeDraggable(node);
   desktop.appendChild(node);
@@ -150,21 +175,28 @@ async function createWindow(key, renderOptions = {}) {
     content.replaceChildren(rendered.element || rendered);
     rendered.afterAttach?.();
     connection.textContent = 'Ready';
+    persistWindowLayoutSoon();
   } catch (error) {
     content.replaceChildren(renderError(error));
     connection.textContent = 'RPC error';
   }
+  return node;
 }
 
-function closeWindow(node) {
+function closeWindow(node, options = {}) {
   if (!node) {
     return;
   }
+  const key = node.dataset.windowKey || '';
+  const persistLayout = options.persistLayout !== false;
   node._cleanup?.();
-  if (node.dataset.windowKey) {
-    openMainWindows.delete(node.dataset.windowKey);
+  if (key) {
+    openMainWindows.delete(key);
   }
   node.remove();
+  if (persistLayout && isRestorableWindow(key)) {
+    persistWindowLayoutSoon();
+  }
 }
 
 function renderDevelopment(payload) {
@@ -174,7 +206,7 @@ function renderDevelopment(payload) {
       connection.textContent = message;
     },
     onOpenFileRequest: (tabs) => openFileWindow(tabs),
-    onProjectSettingsRequired: () => openProjectSettingsForCompile()
+    onProjectSettingsRequired: (kind) => openProjectSettingsForFlow(kind)
   });
   return {
     element: development.element(),
@@ -200,7 +232,8 @@ function renderPathSelector(payload, windowNode, mode) {
     onStatus: (message) => {
       connection.textContent = message;
     },
-    onProjectCreated: (project) => {
+    onProjectCreated: async (project) => {
+      await activateProjectLayout(project);
       connection.textContent = `Project: ${project.path}`;
     },
     onDone: () => {
@@ -218,6 +251,7 @@ function renderProjectOptions(payload, windowNode, renderOptions = {}) {
     onStatus: (message) => {
       connection.textContent = message;
     },
+    onSelectAdditionalSources: () => openAdditionalSourcesWindow(payload.settings?.path || ''),
     onDone: () => {
       closeWindow(windowNode);
     }
@@ -225,13 +259,17 @@ function renderProjectOptions(payload, windowNode, renderOptions = {}) {
   return projectOptions.element();
 }
 
-function openProjectSettingsForCompile() {
+function openProjectSettingsForFlow(kind) {
   const existing = openMainWindows.get('projectOptions');
   if (existing?.isConnected) {
     closeWindow(existing);
   }
   createWindow('projectOptions', {
-    note: 'For compilation both Top module name and Top module file should be set.'
+    note: kind === 'run'
+      ? 'For Run both Top module file and Main test file should be set.'
+      : kind === 'synthesize'
+        ? 'For Synthesize Top module name should be set.'
+        : 'For compilation both Top module name and Top module file should be set.'
   });
 }
 
@@ -250,7 +288,7 @@ function renderFilesystem(payload) {
       activeDevelopment.openFilePayload(filePayload);
       const developmentWindow = openMainWindows.get('development');
       if (developmentWindow?.isConnected) {
-        developmentWindow.style.zIndex = String(nextZIndex++);
+        bringWindowToFront(developmentWindow);
       }
       connection.textContent = `Opened: ${filePayload.path}`;
     },
@@ -278,7 +316,7 @@ function installPushHandlers() {
       activeDevelopment.openFilePayload(payload);
       const developmentWindow = openMainWindows.get('development');
       if (developmentWindow?.isConnected) {
-        developmentWindow.style.zIndex = String(nextZIndex++);
+        bringWindowToFront(developmentWindow);
       }
       connection.textContent = `Opened: ${payload.path}`;
       return true;
@@ -293,7 +331,8 @@ function installPushHandlers() {
       const payload = {
         topModuleName: settings.topModuleName || '',
         topModuleFile: settings.topModuleFile || '',
-        mainTestFile: settings.mainTestFile || ''
+        mainTestFile: settings.mainTestFile || '',
+        additionalSources: settings.additionalSources || ''
       };
       connection.textContent = 'pushProjectSettings';
       const response = await callRpc('/rpc/save-project-settings', payload);
@@ -350,7 +389,8 @@ function handlePushEvent(line) {
       window.pushProjectSettings({
         topModuleName: event.topModuleName,
         topModuleFile: event.topModuleFile,
-        mainTestFile: event.mainTestFile
+        mainTestFile: event.mainTestFile,
+        additionalSources: event.additionalSources
       });
     }
   } catch (error) {
@@ -367,6 +407,7 @@ async function saveProject(options = {}) {
     }
     connection.textContent = 'Checking editors';
     await activeDevelopment?.saveModifiedEditors();
+    await persistWindowLayoutNow();
     let projectName = options.projectName || settings.projectName || '';
     let overwrite = Boolean(options.overwrite);
     if (!projectName) {
@@ -418,7 +459,7 @@ async function openProject(path) {
     }
     connection.textContent = 'Calling /rpc/load-project';
     const payload = await callRpc('/rpc/load-project', { path });
-    activeDevelopment?.refreshTabs();
+    await activateProjectLayout(payload.project);
     connection.textContent = `Project: ${payload.project.path}`;
     closeWindow(openMainWindows.get('loadProject'));
     closeWindow(openMainWindows.get('saveProjectName'));
@@ -447,9 +488,8 @@ async function closeProject() {
     }
     connection.textContent = 'Calling /rpc/close-project';
     await callRpc('/rpc/close-project');
-    closeWindow(openMainWindows.get('development'));
-    closeWindow(openMainWindows.get('filesystem'));
-    closeWindow(openMainWindows.get('projectOptions'));
+    closeRestorableWindows(false);
+    closeWindow(openMainWindows.get('projectOptions'), { persistLayout: false });
     connection.textContent = 'Project closed';
     return true;
   } catch (error) {
@@ -464,6 +504,13 @@ async function currentProjectSettings() {
     return payload.settings;
   } catch {
     return null;
+  }
+}
+
+async function restoreCurrentProjectLayout() {
+  const settings = await currentProjectSettings();
+  if (settings) {
+    await activateProjectLayout(settings);
   }
 }
 
@@ -504,10 +551,33 @@ async function openProjectSaveNameWindow(settings) {
   });
 }
 
+async function openAdditionalSourcesWindow(initialPath) {
+  closeWindow(openMainWindows.get('additionalSources'));
+  return new Promise((resolve) => {
+    openFileSelectWindow({
+      key: 'additionalSources',
+      title: 'Select Additional Sources',
+      mode: 'select-files',
+      initialPath,
+      onSelect: (selection) => {
+        closeWindow(openMainWindows.get('additionalSources'));
+        resolve(selection?.files || []);
+      },
+      onCancel: () => {
+        closeWindow(openMainWindows.get('additionalSources'));
+        resolve([]);
+      }
+    }).catch((error) => {
+      connection.textContent = error instanceof Error ? error.message : String(error);
+      resolve([]);
+    });
+  });
+}
+
 async function openFileSelectWindow({ key, title, mode, initialPath, onSelect, onCancel }) {
   const existing = openMainWindows.get(key);
   if (existing?.isConnected) {
-    existing.style.zIndex = String(nextZIndex++);
+    bringWindowToFront(existing);
     existing.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     return;
   }
@@ -517,19 +587,22 @@ async function openFileSelectWindow({ key, title, mode, initialPath, onSelect, o
   node.dataset.windowKey = key;
   node.classList.add('file-select-window');
   node.querySelector('h2').textContent = title;
+  const maximize = node.querySelector('.maximize-button');
+  const alwaysOnTop = node.querySelector('.always-on-top-button');
+  initializeWindowButtons(node, maximize, alwaysOnTop);
   node.querySelector('.close-button').addEventListener('click', () => {
     onCancel?.();
     closeWindow(node);
   });
-  const maximize = node.querySelector('.maximize-button');
   maximize.addEventListener('click', () => toggleMaximized(node, maximize));
+  alwaysOnTop.addEventListener('click', () => toggleAlwaysOnTop(node, alwaysOnTop));
   node.addEventListener('pointerdown', () => {
-    node.style.zIndex = String(nextZIndex++);
+    bringWindowToFront(node);
   });
   makeDraggable(node);
   node.style.left = `${32 + nextOffset}px`;
   node.style.top = `${32 + nextOffset}px`;
-  node.style.zIndex = String(nextZIndex++);
+  bringWindowToFront(node);
   nextOffset = (nextOffset + 28) % 140;
   openMainWindows.set(key, node);
 
@@ -560,16 +633,19 @@ async function openFileWindow(tabs) {
   const node = template.content.firstElementChild.cloneNode(true);
   node.classList.add('path-window');
   node.querySelector('h2').textContent = 'Open File';
-  node.querySelector('.close-button').addEventListener('click', () => node.remove());
   const maximize = node.querySelector('.maximize-button');
+  const alwaysOnTop = node.querySelector('.always-on-top-button');
+  initializeWindowButtons(node, maximize, alwaysOnTop);
+  node.querySelector('.close-button').addEventListener('click', () => node.remove());
   maximize.addEventListener('click', () => toggleMaximized(node, maximize));
+  alwaysOnTop.addEventListener('click', () => toggleAlwaysOnTop(node, alwaysOnTop));
   node.addEventListener('pointerdown', () => {
-    node.style.zIndex = String(nextZIndex++);
+    bringWindowToFront(node);
   });
   makeDraggable(node);
   node.style.left = `${32 + nextOffset}px`;
   node.style.top = `${32 + nextOffset}px`;
-  node.style.zIndex = String(nextZIndex++);
+  bringWindowToFront(node);
   nextOffset = (nextOffset + 28) % 140;
   const content = node.querySelector('.window-content');
   content.innerHTML = '<div class="loading">Loading project files...</div>';
@@ -664,15 +740,16 @@ function makeDraggable(windowNode) {
   });
 
   titlebar.addEventListener('pointerup', () => {
+    if (dragging) {
+      persistWindowLayoutSoon();
+    }
     dragging = false;
   });
 }
 
 function toggleMaximized(windowNode, button) {
   const maximized = windowNode.classList.toggle('maximized');
-  button.textContent = maximized ? '<>' : '[]';
-  button.title = maximized ? 'Restore' : 'Maximize';
-  button.setAttribute('aria-label', maximized ? 'Restore window' : 'Maximize window');
+  setMaximizeButtonState(button, maximized);
 
   if (!maximized) {
     windowNode.style.left = `${32 + nextOffset}px`;
@@ -680,7 +757,141 @@ function toggleMaximized(windowNode, button) {
     nextOffset = (nextOffset + 28) % 140;
   }
 
-  windowNode.style.zIndex = String(nextZIndex++);
+  bringWindowToFront(windowNode);
+  persistWindowLayoutSoon();
+}
+
+function toggleAlwaysOnTop(windowNode, button) {
+  const enabled = windowNode.classList.toggle('always-on-top');
+  setAlwaysOnTopButtonState(button, enabled);
+  bringWindowToFront(windowNode);
+  persistWindowLayoutSoon();
+}
+
+function initializeWindowButtons(windowNode, maximizeButton, alwaysOnTopButton) {
+  setMaximizeButtonState(maximizeButton, windowNode.classList.contains('maximized'));
+  setAlwaysOnTopButtonState(alwaysOnTopButton, windowNode.classList.contains('always-on-top'));
+}
+
+function setMaximizeButtonState(button, maximized) {
+  button.innerHTML = maximized ? restoreWindowIcon() : maximizeWindowIcon();
+  button.title = maximized ? 'Restore' : 'Maximize';
+  button.setAttribute('aria-label', maximized ? 'Restore window' : 'Maximize window');
+}
+
+function setAlwaysOnTopButtonState(button, enabled) {
+  button.innerHTML = alwaysOnTopIcon();
+  button.title = enabled ? 'Disable always on top' : 'Always on top';
+  button.setAttribute('aria-label', enabled ? 'Disable always on top' : 'Always on top');
+  button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+}
+
+function bringWindowToFront(windowNode) {
+  if (!windowNode) {
+    return;
+  }
+  if (windowNode.classList.contains('always-on-top')) {
+    windowNode.style.zIndex = String(nextPinnedZIndex++);
+  } else {
+    windowNode.style.zIndex = String(nextZIndex++);
+  }
+}
+
+function maximizeWindowIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="6" y="6" width="12" height="12"/>
+    </svg>`;
+}
+
+function restoreWindowIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="8" y="8" width="10" height="10"/>
+      <path d="M6 16V6h10"/>
+    </svg>`;
+}
+
+function alwaysOnTopIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4v10"/>
+      <path d="M8 8h8"/>
+      <path d="M9 14h6l-3 6-3-6z"/>
+    </svg>`;
+}
+
+async function activateProjectLayout(project) {
+  closeRestorableWindows(false);
+  await restoreProjectWindows(project?.windows || []);
+  await persistWindowLayoutNow();
+}
+
+function closeRestorableWindows(persistLayout = true) {
+  suppressLayoutSave = suppressLayoutSave || !persistLayout;
+  try {
+    [...openMainWindows.entries()].forEach(([key, node]) => {
+      if (isRestorableWindow(key)) {
+        closeWindow(node, { persistLayout });
+      }
+    });
+  } finally {
+    if (!persistLayout) {
+      suppressLayoutSave = false;
+    }
+  }
+}
+
+async function restoreProjectWindows(windows) {
+  for (const layout of windows) {
+    if (!layout?.open || !isRestorableWindow(layout.key)) {
+      continue;
+    }
+    await createWindow(layout.key, { layout, restoring: true });
+  }
+}
+
+function isRestorableWindow(key) {
+  return restorableWindows.has(key);
+}
+
+function collectWindowLayout() {
+  return [...openMainWindows.entries()]
+    .filter(([key, node]) => isRestorableWindow(key) && node?.isConnected)
+    .map(([key, node]) => ({
+      key,
+      open: true,
+      x: Math.max(0, Math.round(node.offsetLeft)),
+      y: Math.max(0, Math.round(node.offsetTop)),
+      width: Math.max(0, Math.round(node.offsetWidth)),
+      height: Math.max(0, Math.round(node.offsetHeight)),
+      maximized: node.classList.contains('maximized'),
+      alwaysOnTop: node.classList.contains('always-on-top')
+    }));
+}
+
+function persistWindowLayoutSoon() {
+  if (suppressLayoutSave) {
+    return;
+  }
+  window.clearTimeout(layoutSaveTimer);
+  layoutSaveTimer = window.setTimeout(() => {
+    persistWindowLayoutNow();
+  }, 250);
+}
+
+async function persistWindowLayoutNow() {
+  if (suppressLayoutSave) {
+    return false;
+  }
+  window.clearTimeout(layoutSaveTimer);
+  layoutSaveTimer = 0;
+  try {
+    await callRpc('/rpc/save-window-layout', { windows: collectWindowLayout() });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function newProjectIcon() {
