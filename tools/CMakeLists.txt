@@ -1,7 +1,13 @@
-set (_TRIDENT_CONDA_BIN "${CMAKE_CURRENT_LIST_DIR}/../.conda/bin")
-if(NOT EXISTS "${_TRIDENT_CONDA_BIN}" AND DEFINED ENV{CONDA_PREFIX})
-file(TO_CMAKE_PATH "$ENV{CONDA_PREFIX}" _TRIDENT_CONDA_PREFIX)
-set (_TRIDENT_CONDA_BIN "${_TRIDENT_CONDA_PREFIX}/bin")
+set (_TRIDENT_CONDA_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.conda")
+if(NOT EXISTS "${_TRIDENT_CONDA_ROOT}" AND DEFINED ENV{CONDA_PREFIX})
+file(TO_CMAKE_PATH "$ENV{CONDA_PREFIX}" _TRIDENT_CONDA_ROOT)
+endif()
+file(TO_CMAKE_PATH "${_TRIDENT_CONDA_ROOT}" _TRIDENT_CONDA_ROOT)
+
+if(WIN32 AND EXISTS "${_TRIDENT_CONDA_ROOT}/Library/bin/x86_64-w64-mingw32-g++.exe")
+set (_TRIDENT_CONDA_BIN "${_TRIDENT_CONDA_ROOT}/Library/bin")
+else()
+set (_TRIDENT_CONDA_BIN "${_TRIDENT_CONDA_ROOT}/bin")
 endif()
 file(TO_CMAKE_PATH "${_TRIDENT_CONDA_BIN}" _TRIDENT_CONDA_BIN)
 
@@ -10,7 +16,18 @@ set (CMAKE_LINKER "${_TRIDENT_CONDA_BIN}/ld64.lld.exe")
 set (CMAKE_C_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-w64-mingw32-gcc.exe")
 set (CMAKE_CXX_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-w64-mingw32-g++.exe")
 set (CMAKE_GENERATOR "Unix Makefiles")
-set (CMAKE_MAKE_PROGRAM "${_TRIDENT_CONDA_BIN}/make.exe" CACHE FILEPATH "Make program" FORCE)
+set (_TRIDENT_MAKE_PROGRAM "${_TRIDENT_CONDA_BIN}/make.exe")
+foreach(_TRIDENT_MAKE_CANDIDATE
+    "${_TRIDENT_CONDA_ROOT}/Library/bin/make.exe"
+    "${_TRIDENT_CONDA_ROOT}/Library/usr/bin/make.exe"
+    "${_TRIDENT_CONDA_ROOT}/bin/make.exe"
+)
+    if(EXISTS "${_TRIDENT_MAKE_CANDIDATE}")
+        set (_TRIDENT_MAKE_PROGRAM "${_TRIDENT_MAKE_CANDIDATE}")
+        break()
+    endif()
+endforeach()
+set (CMAKE_MAKE_PROGRAM "${_TRIDENT_MAKE_PROGRAM}" CACHE FILEPATH "Make program" FORCE)
 set (CMAKE_C_COMPILER_FORCED "TRUE")
 set (CMAKE_CXX_COMPILER_FORCED "TRUE")
 else()
@@ -28,14 +45,30 @@ project(TridentTools LANGUAGES C CXX)
 
 include(ExternalProject)
 
-set(GIT_EXECUTABLE "${_TRIDENT_CONDA_BIN}/git" CACHE FILEPATH "Git executable" FORCE)
+if(WIN32)
+    set(_TRIDENT_CMAKE "${_TRIDENT_CONDA_BIN}/cmake.exe")
+    if(EXISTS "${_TRIDENT_CONDA_BIN}/git.exe")
+        set(_TRIDENT_GIT "${_TRIDENT_CONDA_BIN}/git.exe")
+    else()
+        set(_TRIDENT_GIT "git")
+    endif()
+else()
+    set(_TRIDENT_CMAKE "${_TRIDENT_CONDA_BIN}/cmake")
+    if(EXISTS "${_TRIDENT_CONDA_BIN}/git")
+        set(_TRIDENT_GIT "${_TRIDENT_CONDA_BIN}/git")
+    else()
+        set(_TRIDENT_GIT "git")
+    endif()
+endif()
+
+set(GIT_EXECUTABLE "${_TRIDENT_GIT}" CACHE FILEPATH "Git executable" FORCE)
 set(TOOLS_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE PATH "Tool source directory" FORCE)
 set(TOOLS_BUILD_DIR "${CMAKE_BINARY_DIR}/tools/build-current" CACHE PATH "Tool build directory" FORCE)
 set(TOOLS_INSTALL_DIR "${CMAKE_BINARY_DIR}/tools/install-current" CACHE PATH "Tool install directory" FORCE)
 
-set(TRIDENT_CONDA_PREFIX "${_TRIDENT_CONDA_BIN}/..")
+set(TRIDENT_CONDA_PREFIX "${_TRIDENT_CONDA_ROOT}")
 set(TRIDENT_TOOL_ENV
-    "PATH=${_TRIDENT_CONDA_BIN}:$ENV{PATH}"
+    "PATH=${_TRIDENT_CONDA_BIN}:${_TRIDENT_CONDA_ROOT}/bin:${_TRIDENT_CONDA_ROOT}/Library/usr/bin:$ENV{PATH}"
     "PKG_CONFIG_PATH=${TRIDENT_CONDA_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}"
 )
 
@@ -102,23 +135,23 @@ function(trident_cmake_tool tool_name tool_url)
     trident_source_args(source_args "${tool_name}" "${tool_url}")
     if(tool_name STREQUAL "cpphdl")
         set(tool_build_command
-            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR> --target cpphdl hdlcpp
-            COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E remove_directory "${CMAKE_BINARY_DIR}/cpphdl/include"
-            COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E make_directory "${CMAKE_BINARY_DIR}/cpphdl"
-            COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E copy_directory
+            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
+            COMMAND "${_TRIDENT_CMAKE}" -E remove_directory "${CMAKE_BINARY_DIR}/cpphdl/include"
+            COMMAND "${_TRIDENT_CMAKE}" -E make_directory "${CMAKE_BINARY_DIR}/cpphdl"
+            COMMAND "${_TRIDENT_CMAKE}" -E copy_directory
                 "${TOOLS_SOURCE_DIR}/cpphdl/include"
                 "${CMAKE_BINARY_DIR}/cpphdl/include"
         )
     elseif(tool_name STREQUAL "slang")
         set(tool_build_command
-            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR> --parallel 1
+            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --parallel 1
         )
     else()
         set(tool_build_command
-            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR>
+            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CMAKE}" --build <BINARY_DIR>
         )
     endif()
     ExternalProject_Add(${tool_name}
@@ -126,14 +159,14 @@ function(trident_cmake_tool tool_name tool_url)
         EXCLUDE_FROM_ALL TRUE
         BINARY_DIR "${TOOLS_BUILD_DIR}/${tool_name}"
         INSTALL_DIR "${TOOLS_INSTALL_DIR}/${tool_name}"
-        CMAKE_COMMAND "${_TRIDENT_CONDA_BIN}/cmake"
+        CMAKE_COMMAND "${_TRIDENT_CMAKE}"
         CMAKE_GENERATOR "Unix Makefiles"
         CMAKE_ARGS
             ${TRIDENT_COMMON_CMAKE_ARGS}
             ${ARGN}
         CONFIGURE_COMMAND
-            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CONDA_BIN}/cmake"
+            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CMAKE}"
             -G "Unix Makefiles"
             ${TRIDENT_COMMON_CMAKE_ARGS}
             ${ARGN}
@@ -185,13 +218,13 @@ if(CMAKE_VERSION VERSION_LESS 3.27)
         BINARY_DIR "${TOOLS_BUILD_DIR}/cmake_host"
         INSTALL_DIR "${TOOLS_INSTALL_DIR}/cmake_host"
         CONFIGURE_COMMAND
-            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
             <SOURCE_DIR>/bootstrap --prefix=<INSTALL_DIR> --parallel=1
         BUILD_COMMAND
-            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
             "${CMAKE_MAKE_PROGRAM}" -C <BINARY_DIR> -j1
         INSTALL_COMMAND
-            "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
             "${CMAKE_MAKE_PROGRAM}" -C <BINARY_DIR> -j1 install
         STEP_TARGETS download configure build install
         USES_TERMINAL_DOWNLOAD TRUE
@@ -202,7 +235,7 @@ if(CMAKE_VERSION VERSION_LESS 3.27)
     set(YOSYS_CMAKE_COMMAND "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake")
     set(YOSYS_EXTRA_DEPENDS cmake_host)
 else()
-    set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CONDA_BIN}/cmake")
+    set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CMAKE}")
     set(YOSYS_EXTRA_DEPENDS)
 endif()
 
@@ -218,7 +251,7 @@ ExternalProject_Add(yosys
     CMAKE_COMMAND "${YOSYS_CMAKE_COMMAND}"
     CMAKE_GENERATOR "Unix Makefiles"
     CONFIGURE_COMMAND
-        "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
         "${YOSYS_CMAKE_COMMAND}"
         -G "Unix Makefiles"
         ${TRIDENT_COMMON_CMAKE_ARGS}
@@ -230,7 +263,7 @@ ExternalProject_Add(yosys
         -S <SOURCE_DIR>
         -B <BINARY_DIR>
     BUILD_COMMAND
-        "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
+        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
         "${YOSYS_CMAKE_COMMAND}" --build <BINARY_DIR>
     INSTALL_COMMAND ""
     STEP_TARGETS download update configure build
@@ -267,15 +300,15 @@ ExternalProject_Add(yosys_slang
     DEPENDS yosys
     BINARY_DIR "${TOOLS_BUILD_DIR}/yosys-slang"
     INSTALL_DIR "${TOOLS_INSTALL_DIR}/yosys-slang"
-    CMAKE_COMMAND "${_TRIDENT_CONDA_BIN}/cmake"
+    CMAKE_COMMAND "${_TRIDENT_CMAKE}"
     CMAKE_GENERATOR "Unix Makefiles"
     CMAKE_ARGS
         ${TRIDENT_COMMON_CMAKE_ARGS}
         -DBUILD_AS_PLUGIN=ON
         -DYOSYS_CONFIG=${TOOLS_BUILD_DIR}/yosys/yosys-config
     CONFIGURE_COMMAND
-        "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
-        "${_TRIDENT_CONDA_BIN}/cmake"
+        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+        "${_TRIDENT_CMAKE}"
         -G "Unix Makefiles"
         ${TRIDENT_COMMON_CMAKE_ARGS}
         -DBUILD_AS_PLUGIN=ON
@@ -283,10 +316,10 @@ ExternalProject_Add(yosys_slang
         -S <SOURCE_DIR>
         -B <BINARY_DIR>
     BUILD_COMMAND
-        "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
-        "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR> --target yosys-slang --parallel 1
-        COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E make_directory "${TOOLS_BUILD_DIR}/yosys/share/plugins"
-        COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E copy_if_different
+        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+        "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target yosys-slang --parallel 1
+        COMMAND "${_TRIDENT_CMAKE}" -E make_directory "${TOOLS_BUILD_DIR}/yosys/share/plugins"
+        COMMAND "${_TRIDENT_CMAKE}" -E copy_if_different
             <BINARY_DIR>/slang.so
             "${TOOLS_BUILD_DIR}/yosys/share/plugins/slang.so"
     INSTALL_COMMAND ""
