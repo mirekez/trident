@@ -221,7 +221,10 @@ if(CMAKE_VERSION VERSION_LESS 3.27)
             CONFIGURE_COMMAND ""
             BUILD_COMMAND ""
             INSTALL_COMMAND
-                "${_TRIDENT_CMAKE}" -E copy_directory <SOURCE_DIR> <INSTALL_DIR>
+                "${_TRIDENT_CMAKE}"
+                    -DSOURCE_DIR=<SOURCE_DIR>
+                    -DINSTALL_DIR=<INSTALL_DIR>
+                    -P "${CMAKE_CURRENT_LIST_DIR}/InstallPrebuiltCMake.cmake"
             STEP_TARGETS download install
             USES_TERMINAL_DOWNLOAD TRUE
             USES_TERMINAL_INSTALL TRUE
@@ -262,6 +265,21 @@ else()
     set(YOSYS_EXTRA_DEPENDS)
 endif()
 
+if(WIN32)
+    configure_file(
+        "${CMAKE_CURRENT_LIST_DIR}/RunCMakeCommand.sh.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
+        @ONLY
+    )
+    set(TRIDENT_YOSYS_CMAKE_LAUNCHER
+        sh "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh" "${YOSYS_CMAKE_COMMAND}"
+    )
+else()
+    set(TRIDENT_YOSYS_CMAKE_LAUNCHER
+        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV} "${YOSYS_CMAKE_COMMAND}"
+    )
+endif()
+
 trident_source_args(yosys_source_args yosys https://github.com/YosysHQ/yosys.git)
 ExternalProject_Add(yosys
     ${yosys_source_args}
@@ -274,8 +292,7 @@ ExternalProject_Add(yosys
     CMAKE_COMMAND "${YOSYS_CMAKE_COMMAND}"
     CMAKE_GENERATOR "Unix Makefiles"
     CONFIGURE_COMMAND
-        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-        "${YOSYS_CMAKE_COMMAND}"
+        ${TRIDENT_YOSYS_CMAKE_LAUNCHER}
         -G "Unix Makefiles"
         ${TRIDENT_COMMON_CMAKE_ARGS}
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
@@ -286,8 +303,7 @@ ExternalProject_Add(yosys
         -S <SOURCE_DIR>
         -B <BINARY_DIR>
     BUILD_COMMAND
-        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-        "${YOSYS_CMAKE_COMMAND}" --build <BINARY_DIR>
+        ${TRIDENT_YOSYS_CMAKE_LAUNCHER} --build <BINARY_DIR>
     INSTALL_COMMAND ""
     STEP_TARGETS download update configure build
     USES_TERMINAL_DOWNLOAD TRUE
