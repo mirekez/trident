@@ -285,6 +285,44 @@ if [ ! -f \"\$cmake_cmd_unix\" ]; then
 fi
 
 \"\$cmake_cmd_unix\" --version
+
+build_dir=\"\"
+source_dir=\"\"
+previous_arg=\"\"
+for arg in \"\$@\"; do
+    if [ \"\$previous_arg\" = \"-B\" ]; then
+        build_dir=\"\$arg\"
+        previous_arg=\"\"
+        continue
+    fi
+    if [ \"\$previous_arg\" = \"-S\" ]; then
+        source_dir=\"\$arg\"
+        previous_arg=\"\"
+        continue
+    fi
+    case \"\$arg\" in
+        -B)
+            previous_arg=\"-B\"
+            ;;
+        -S)
+            previous_arg=\"-S\"
+            ;;
+        -B*)
+            build_dir=\"\${arg#-B}\"
+            ;;
+        -S*)
+            source_dir=\"\${arg#-S}\"
+            ;;
+    esac
+done
+
+if [ -n \"\$build_dir\" ] && [ -n \"\$source_dir\" ]; then
+    build_dir_unix=\"\$(to_unix_path \"\$build_dir\")\"
+    echo \"  clearing:  \$build_dir_unix/CMakeCache.txt\"
+    rm -f \"\$build_dir_unix/CMakeCache.txt\"
+    rm -rf \"\$build_dir_unix/CMakeFiles\"
+fi
+
 exec \"\$cmake_cmd_unix\" \"\$@\"
 ")
     set(TRIDENT_YOSYS_CMAKE_LAUNCHER
