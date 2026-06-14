@@ -87,6 +87,44 @@ set(TRIDENT_COMMON_CMAKE_ARGS
     -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
 )
 
+set(TRIDENT_YOSYS_EXTRA_CMAKE_ARGS)
+if(WIN32)
+    find_program(TRIDENT_FLEX_EXECUTABLE
+        NAMES win_flex win_flex.exe flex flex.exe
+        PATHS
+            "${_TRIDENT_CONDA_ROOT}/Library/bin"
+            "${_TRIDENT_CONDA_ROOT}/Library/usr/bin"
+            "${_TRIDENT_CONDA_ROOT}/bin"
+        ENV PATH
+        NO_DEFAULT_PATH
+    )
+    find_program(TRIDENT_BISON_EXECUTABLE
+        NAMES win_bison win_bison.exe bison bison.exe
+        PATHS
+            "${_TRIDENT_CONDA_ROOT}/Library/bin"
+            "${_TRIDENT_CONDA_ROOT}/Library/usr/bin"
+            "${_TRIDENT_CONDA_ROOT}/bin"
+        ENV PATH
+        NO_DEFAULT_PATH
+    )
+
+    if(TRIDENT_FLEX_EXECUTABLE)
+        file(TO_CMAKE_PATH "${TRIDENT_FLEX_EXECUTABLE}" TRIDENT_FLEX_EXECUTABLE)
+        list(APPEND TRIDENT_YOSYS_EXTRA_CMAKE_ARGS -DFLEX_EXECUTABLE=${TRIDENT_FLEX_EXECUTABLE})
+        message(STATUS "Using FLEX for Yosys: ${TRIDENT_FLEX_EXECUTABLE}")
+    else()
+        message(WARNING "FLEX was not found for Yosys. Install flex/win_flex into the active .conda or MSYS environment.")
+    endif()
+
+    if(TRIDENT_BISON_EXECUTABLE)
+        file(TO_CMAKE_PATH "${TRIDENT_BISON_EXECUTABLE}" TRIDENT_BISON_EXECUTABLE)
+        list(APPEND TRIDENT_YOSYS_EXTRA_CMAKE_ARGS -DBISON_EXECUTABLE=${TRIDENT_BISON_EXECUTABLE})
+        message(STATUS "Using BISON for Yosys: ${TRIDENT_BISON_EXECUTABLE}")
+    else()
+        message(WARNING "BISON was not found for Yosys. Install bison/win_bison into the active .conda or MSYS environment.")
+    endif()
+endif()
+
 if(WIN32)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
 "#!/usr/bin/env sh
@@ -378,6 +416,7 @@ ExternalProject_Add(yosys
         -DYOSYS_WITH_PYTHON=OFF
         -DYOSYS_WITHOUT_READLINE=OFF
         -DYOSYS_WITHOUT_TCL=OFF
+        ${TRIDENT_YOSYS_EXTRA_CMAKE_ARGS}
         -S <SOURCE_DIR>
         -B <BINARY_DIR>
     BUILD_COMMAND
