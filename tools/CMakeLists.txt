@@ -213,15 +213,18 @@ trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git)
 trident_tool_version(CMAKE_HOST_VERSION cmake)
 string(REGEX REPLACE "^v" "" CMAKE_HOST_VERSION_NUMBER "${CMAKE_HOST_VERSION}")
 
-if(CMAKE_VERSION VERSION_LESS 3.27)
-    if(WIN32)
-        set(CMAKE_HOST_URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}-windows-x86_64.zip")
-        set(CMAKE_HOST_EXECUTABLE "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake.exe")
-    else()
-        set(CMAKE_HOST_URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}-linux-x86_64.tar.gz")
-        set(CMAKE_HOST_EXECUTABLE "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake")
-    endif()
-
+set(YOSYS_PATCH_COMMAND "")
+if(WIN32 AND CMAKE_VERSION VERSION_LESS 3.27)
+    set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CMAKE}")
+    set(YOSYS_EXTRA_DEPENDS)
+    set(YOSYS_PATCH_COMMAND
+        "${_TRIDENT_CMAKE}"
+            -DYOSYS_SOURCE_DIR=<SOURCE_DIR>
+            -P "${CMAKE_CURRENT_LIST_DIR}/PatchYosysCMakeForWindows.cmake"
+    )
+elseif(CMAKE_VERSION VERSION_LESS 3.27)
+    set(CMAKE_HOST_URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}-linux-x86_64.tar.gz")
+    set(CMAKE_HOST_EXECUTABLE "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake")
     ExternalProject_Add(cmake_host
         URL "${CMAKE_HOST_URL}"
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
@@ -354,6 +357,7 @@ ExternalProject_Add(yosys
     GIT_SUBMODULES_RECURSE TRUE
     EXCLUDE_FROM_ALL TRUE
     DEPENDS ${YOSYS_EXTRA_DEPENDS}
+    PATCH_COMMAND ${YOSYS_PATCH_COMMAND}
     BINARY_DIR "${TOOLS_BUILD_DIR}/yosys"
     INSTALL_DIR "${TOOLS_INSTALL_DIR}/yosys"
     CMAKE_COMMAND "${YOSYS_CMAKE_COMMAND}"
