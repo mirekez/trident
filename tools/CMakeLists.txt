@@ -211,9 +211,20 @@ string(REGEX REPLACE "^v" "" CMAKE_HOST_VERSION_NUMBER "${CMAKE_HOST_VERSION}")
 
 if(CMAKE_VERSION VERSION_LESS 3.27)
     if(WIN32)
-        set(CMAKE_HOST_CONFIGURE_COMMAND
-            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-            sh <SOURCE_DIR>/bootstrap --prefix=<INSTALL_DIR> --parallel=1
+        ExternalProject_Add(cmake_host
+            URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}-windows-x86_64.zip"
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+            EXCLUDE_FROM_ALL TRUE
+            SOURCE_DIR "${TOOLS_BUILD_DIR}/cmake_host_prebuilt"
+            BINARY_DIR "${TOOLS_BUILD_DIR}/cmake_host"
+            INSTALL_DIR "${TOOLS_INSTALL_DIR}/cmake_host"
+            CONFIGURE_COMMAND ""
+            BUILD_COMMAND ""
+            INSTALL_COMMAND
+                "${_TRIDENT_CMAKE}" -E copy_directory <SOURCE_DIR> <INSTALL_DIR>
+            STEP_TARGETS download install
+            USES_TERMINAL_DOWNLOAD TRUE
+            USES_TERMINAL_INSTALL TRUE
         )
         set(CMAKE_HOST_EXECUTABLE "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake.exe")
     else()
@@ -222,28 +233,28 @@ if(CMAKE_VERSION VERSION_LESS 3.27)
             <SOURCE_DIR>/bootstrap --prefix=<INSTALL_DIR> --parallel=1
         )
         set(CMAKE_HOST_EXECUTABLE "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake")
-    endif()
 
-    ExternalProject_Add(cmake_host
-        URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}.tar.gz"
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-        EXCLUDE_FROM_ALL TRUE
-        SOURCE_DIR "${TOOLS_SOURCE_DIR}/cmake-${CMAKE_HOST_VERSION_NUMBER}"
-        BINARY_DIR "${TOOLS_BUILD_DIR}/cmake_host"
-        INSTALL_DIR "${TOOLS_INSTALL_DIR}/cmake_host"
-        CONFIGURE_COMMAND ${CMAKE_HOST_CONFIGURE_COMMAND}
-        BUILD_COMMAND
-            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-            "${CMAKE_MAKE_PROGRAM}" -C <BINARY_DIR> -j1
-        INSTALL_COMMAND
-            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-            "${CMAKE_MAKE_PROGRAM}" -C <BINARY_DIR> -j1 install
-        STEP_TARGETS download configure build install
-        USES_TERMINAL_DOWNLOAD TRUE
-        USES_TERMINAL_CONFIGURE TRUE
-        USES_TERMINAL_BUILD TRUE
-        USES_TERMINAL_INSTALL TRUE
-    )
+        ExternalProject_Add(cmake_host
+            URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}.tar.gz"
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+            EXCLUDE_FROM_ALL TRUE
+            SOURCE_DIR "${TOOLS_SOURCE_DIR}/cmake-${CMAKE_HOST_VERSION_NUMBER}"
+            BINARY_DIR "${TOOLS_BUILD_DIR}/cmake_host"
+            INSTALL_DIR "${TOOLS_INSTALL_DIR}/cmake_host"
+            CONFIGURE_COMMAND ${CMAKE_HOST_CONFIGURE_COMMAND}
+            BUILD_COMMAND
+                "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+                "${CMAKE_MAKE_PROGRAM}" -C <BINARY_DIR> -j1
+            INSTALL_COMMAND
+                "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+                "${CMAKE_MAKE_PROGRAM}" -C <BINARY_DIR> -j1 install
+            STEP_TARGETS download configure build install
+            USES_TERMINAL_DOWNLOAD TRUE
+            USES_TERMINAL_CONFIGURE TRUE
+            USES_TERMINAL_BUILD TRUE
+            USES_TERMINAL_INSTALL TRUE
+        )
+    endif()
     set(YOSYS_CMAKE_COMMAND "${CMAKE_HOST_EXECUTABLE}")
     set(YOSYS_EXTRA_DEPENDS cmake_host)
 else()
