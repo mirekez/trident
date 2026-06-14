@@ -105,6 +105,11 @@ function(trident_cmake_tool tool_name tool_url)
         set(tool_build_command
             "${_TRIDENT_CONDA_BIN}/cmake" -E env ${TRIDENT_TOOL_ENV}
             "${_TRIDENT_CONDA_BIN}/cmake" --build <BINARY_DIR> --target cpphdl hdlcpp
+            COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E remove_directory "${CMAKE_BINARY_DIR}/cpphdl/include"
+            COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E make_directory "${CMAKE_BINARY_DIR}/cpphdl"
+            COMMAND "${_TRIDENT_CONDA_BIN}/cmake" -E copy_directory
+                "${TOOLS_SOURCE_DIR}/cpphdl/include"
+                "${CMAKE_BINARY_DIR}/cpphdl/include"
         )
     elseif(tool_name STREQUAL "slang")
         set(tool_build_command
@@ -293,4 +298,4 @@ ExternalProject_Add(yosys_slang
     USES_TERMINAL_BUILD TRUE
 )
 
-add_custom_target(trident_tools DEPENDS cpphdl scalepnr yosys yosys_slang)
+add_custom_target(trident_tools ALL DEPENDS cpphdl scalepnr yosys yosys_slang)

@@ -66,6 +66,10 @@ endif()
 add_executable(trident_backend backend/main.cpp)
 target_link_libraries(trident_backend PRIVATE trident_backend_lib)
 
+if(NOT WIN32)
+    target_link_options(trident_backend PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+
 add_custom_command(TARGET trident_backend POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_SOURCE_DIR}/default_flow.json"
@@ -75,7 +79,15 @@ add_custom_command(TARGET trident_backend POST_BUILD
 add_executable(trident_backend_tests backend/tests/main.cpp)
 target_link_libraries(trident_backend_tests PRIVATE trident_backend_lib)
 
+if(NOT WIN32)
+    target_link_options(trident_backend_tests PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+
 add_executable(trident_starter starter.cpp)
+
+if(NOT WIN32)
+    target_link_options(trident_starter PRIVATE -static-libstdc++ -static-libgcc)
+endif()
 
 enable_testing()
 add_test(NAME trident_backend_tests COMMAND trident_backend_tests)
