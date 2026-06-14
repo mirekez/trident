@@ -96,10 +96,19 @@ cmake_cmd=\"\$1\"
 shift
 
 to_unix_path() {
+    path_value=\"\$1\"
+    case \"\$path_value\" in
+        ?:/*)
+            drive=\"\$(printf '%s' \"\${path_value%%:*}\" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')\"
+            rest=\"\${path_value#?:}\"
+            printf '/%s%s\\n' \"\$drive\" \"\$rest\"
+            return 0
+            ;;
+    esac
     if command -v cygpath >/dev/null 2>&1; then
-        cygpath -u \"\$1\" 2>/dev/null || printf '%s\\n' \"\$1\"
+        cygpath -u \"\$path_value\" 2>/dev/null || printf '%s\\n' \"\$path_value\"
     else
-        printf '%s\\n' \"\$1\"
+        printf '%s\\n' \"\$path_value\"
     fi
 }
 
