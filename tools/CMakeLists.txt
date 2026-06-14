@@ -87,44 +87,6 @@ set(TRIDENT_COMMON_CMAKE_ARGS
     -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
 )
 
-set(TRIDENT_YOSYS_EXTRA_CMAKE_ARGS)
-if(WIN32)
-    find_program(TRIDENT_FLEX_EXECUTABLE
-        NAMES win_flex win_flex.exe flex flex.exe
-        PATHS
-            "${_TRIDENT_CONDA_ROOT}/Library/bin"
-            "${_TRIDENT_CONDA_ROOT}/Library/usr/bin"
-            "${_TRIDENT_CONDA_ROOT}/bin"
-        ENV PATH
-        NO_DEFAULT_PATH
-    )
-    find_program(TRIDENT_BISON_EXECUTABLE
-        NAMES win_bison win_bison.exe bison bison.exe
-        PATHS
-            "${_TRIDENT_CONDA_ROOT}/Library/bin"
-            "${_TRIDENT_CONDA_ROOT}/Library/usr/bin"
-            "${_TRIDENT_CONDA_ROOT}/bin"
-        ENV PATH
-        NO_DEFAULT_PATH
-    )
-
-    if(TRIDENT_FLEX_EXECUTABLE)
-        file(TO_CMAKE_PATH "${TRIDENT_FLEX_EXECUTABLE}" TRIDENT_FLEX_EXECUTABLE)
-        list(APPEND TRIDENT_YOSYS_EXTRA_CMAKE_ARGS -DFLEX_EXECUTABLE=${TRIDENT_FLEX_EXECUTABLE})
-        message(STATUS "Using FLEX for Yosys: ${TRIDENT_FLEX_EXECUTABLE}")
-    else()
-        message(WARNING "FLEX was not found for Yosys. Install flex/win_flex into the active .conda or MSYS environment.")
-    endif()
-
-    if(TRIDENT_BISON_EXECUTABLE)
-        file(TO_CMAKE_PATH "${TRIDENT_BISON_EXECUTABLE}" TRIDENT_BISON_EXECUTABLE)
-        list(APPEND TRIDENT_YOSYS_EXTRA_CMAKE_ARGS -DBISON_EXECUTABLE=${TRIDENT_BISON_EXECUTABLE})
-        message(STATUS "Using BISON for Yosys: ${TRIDENT_BISON_EXECUTABLE}")
-    else()
-        message(WARNING "BISON was not found for Yosys. Install bison/win_bison into the active .conda or MSYS environment.")
-    endif()
-endif()
-
 if(WIN32)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
 "#!/usr/bin/env sh
@@ -278,6 +240,59 @@ function(trident_source_args out_var tool_name tool_url)
     endif()
 endfunction()
 
+set(TRIDENT_YOSYS_EXTRA_CMAKE_ARGS)
+set(TRIDENT_YOSYS_EXTRA_DEPENDS)
+if(WIN32)
+    find_program(TRIDENT_FLEX_EXECUTABLE
+        NAMES win_flex win_flex.exe flex flex.exe
+        PATHS
+            "${_TRIDENT_CONDA_ROOT}/Library/bin"
+            "${_TRIDENT_CONDA_ROOT}/Library/usr/bin"
+            "${_TRIDENT_CONDA_ROOT}/bin"
+        ENV PATH
+        NO_DEFAULT_PATH
+    )
+    find_program(TRIDENT_BISON_EXECUTABLE
+        NAMES win_bison win_bison.exe bison bison.exe
+        PATHS
+            "${_TRIDENT_CONDA_ROOT}/Library/bin"
+            "${_TRIDENT_CONDA_ROOT}/Library/usr/bin"
+            "${_TRIDENT_CONDA_ROOT}/bin"
+        ENV PATH
+        NO_DEFAULT_PATH
+    )
+
+    if(NOT TRIDENT_FLEX_EXECUTABLE OR NOT TRIDENT_BISON_EXECUTABLE)
+        trident_tool_version(WINFLEXBISON_VERSION winflexbison)
+        string(REGEX REPLACE "^v" "" WINFLEXBISON_VERSION_NUMBER "${WINFLEXBISON_VERSION}")
+        ExternalProject_Add(winflexbison
+            URL "https://github.com/lexxmark/winflexbison/releases/download/${WINFLEXBISON_VERSION}/win_flex_bison-${WINFLEXBISON_VERSION_NUMBER}.zip"
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+            EXCLUDE_FROM_ALL TRUE
+            SOURCE_DIR "${TOOLS_BUILD_DIR}/winflexbison"
+            BINARY_DIR "${TOOLS_BUILD_DIR}/winflexbison-build"
+            CONFIGURE_COMMAND ""
+            BUILD_COMMAND ""
+            INSTALL_COMMAND ""
+            STEP_TARGETS download
+            USES_TERMINAL_DOWNLOAD TRUE
+        )
+        set(TRIDENT_FLEX_EXECUTABLE "${TOOLS_BUILD_DIR}/winflexbison/win_flex.exe")
+        set(TRIDENT_BISON_EXECUTABLE "${TOOLS_BUILD_DIR}/winflexbison/win_bison.exe")
+        list(APPEND TRIDENT_YOSYS_EXTRA_DEPENDS winflexbison)
+        message(STATUS "Using downloaded winflexbison for Yosys")
+    endif()
+
+    file(TO_CMAKE_PATH "${TRIDENT_FLEX_EXECUTABLE}" TRIDENT_FLEX_EXECUTABLE)
+    file(TO_CMAKE_PATH "${TRIDENT_BISON_EXECUTABLE}" TRIDENT_BISON_EXECUTABLE)
+    list(APPEND TRIDENT_YOSYS_EXTRA_CMAKE_ARGS
+        -DFLEX_EXECUTABLE=${TRIDENT_FLEX_EXECUTABLE}
+        -DBISON_EXECUTABLE=${TRIDENT_BISON_EXECUTABLE}
+    )
+    message(STATUS "Using FLEX for Yosys: ${TRIDENT_FLEX_EXECUTABLE}")
+    message(STATUS "Using BISON for Yosys: ${TRIDENT_BISON_EXECUTABLE}")
+endif()
+
 function(trident_cmake_tool tool_name tool_url)
     trident_source_args(source_args "${tool_name}" "${tool_url}")
     if(tool_name STREQUAL "cpphdl")
@@ -401,7 +416,7 @@ ExternalProject_Add(yosys
     GIT_SUBMODULES abc libs/cxxopts
     GIT_SUBMODULES_RECURSE TRUE
     EXCLUDE_FROM_ALL TRUE
-    DEPENDS ${YOSYS_EXTRA_DEPENDS}
+    DEPENDS ${YOSYS_EXTRA_DEPENDS} ${TRIDENT_YOSYS_EXTRA_DEPENDS}
     PATCH_COMMAND ${YOSYS_PATCH_COMMAND}
     BINARY_DIR "${TOOLS_BUILD_DIR}/yosys"
     INSTALL_DIR "${TOOLS_INSTALL_DIR}/yosys"
