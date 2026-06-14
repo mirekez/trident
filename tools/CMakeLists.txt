@@ -266,11 +266,51 @@ else()
 endif()
 
 if(WIN32)
-    configure_file(
-        "${CMAKE_CURRENT_LIST_DIR}/RunCMakeCommand.sh.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
-        @ONLY
-    )
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
+"#!/usr/bin/env sh
+set -eu
+
+cmake_cmd=\"\$1\"
+shift
+
+to_unix_path() {
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -u \"\$1\" 2>/dev/null || printf '%s\\n' \"\$1\"
+    else
+        printf '%s\\n' \"\$1\"
+    fi
+}
+
+prepend_path() {
+    path_item=\"\$(to_unix_path \"\$1\")\"
+    if [ -n \"\$path_item\" ]; then
+        PATH=\"\$path_item:\$PATH\"
+    fi
+}
+
+prepend_path \"${_TRIDENT_CONDA_BIN}\"
+prepend_path \"${_TRIDENT_CONDA_ROOT}/bin\"
+prepend_path \"${_TRIDENT_CONDA_ROOT}/Library/bin\"
+prepend_path \"${_TRIDENT_CONDA_ROOT}/Library/usr/bin\"
+export PATH
+
+cmake_cmd_unix=\"\$(to_unix_path \"\$cmake_cmd\")\"
+
+echo \"Trident CMake wrapper\"
+echo \"  requested: \$cmake_cmd\"
+echo \"  resolved:  \$cmake_cmd_unix\"
+
+if [ ! -f \"\$cmake_cmd_unix\" ]; then
+    echo \"Missing CMake executable: \$cmake_cmd_unix\" >&2
+    if command -v ls >/dev/null 2>&1; then
+        ls -la \"\$(dirname \"\$cmake_cmd_unix\")\" >&2 || true
+    fi
+    exit 127
+fi
+
+\"\$cmake_cmd_unix\" --version
+exec \"\$cmake_cmd_unix\" \"\$@\"
+")
     set(TRIDENT_YOSYS_CMAKE_LAUNCHER
         sh "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh" "${YOSYS_CMAKE_COMMAND}"
     )
