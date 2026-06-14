@@ -70,6 +70,12 @@ set(TRIDENT_CONDA_PREFIX "${_TRIDENT_CONDA_ROOT}")
 set(TRIDENT_TOOL_ENV
     "PATH=${_TRIDENT_CONDA_BIN}:${_TRIDENT_CONDA_ROOT}/bin:${_TRIDENT_CONDA_ROOT}/Library/usr/bin:$ENV{PATH}"
     "PKG_CONFIG_PATH=${TRIDENT_CONDA_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}"
+    "CFLAGS="
+    "CXXFLAGS="
+    "CPPFLAGS="
+    "LDFLAGS="
+    "OBJCFLAGS="
+    "OBJCXXFLAGS="
 )
 
 set(TRIDENT_COMMON_CMAKE_ARGS
@@ -269,6 +275,13 @@ prepend_path \"${_TRIDENT_CONDA_ROOT}/bin\"
 prepend_path \"${_TRIDENT_CONDA_ROOT}/Library/bin\"
 prepend_path \"${_TRIDENT_CONDA_ROOT}/Library/usr/bin\"
 export PATH
+
+unset CFLAGS
+unset CXXFLAGS
+unset CPPFLAGS
+unset LDFLAGS
+unset OBJCFLAGS
+unset OBJCXXFLAGS
 
 cmake_cmd_unix=\"\$(to_unix_path \"\$cmake_cmd\")\"
 
