@@ -87,169 +87,6 @@ set(TRIDENT_COMMON_CMAKE_ARGS
     -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
 )
 
-set(TRIDENT_VERSIONS_FILE "${CMAKE_CURRENT_LIST_DIR}/versions" CACHE FILEPATH "Pinned tool versions" FORCE)
-if(NOT EXISTS "${TRIDENT_VERSIONS_FILE}")
-    message(FATAL_ERROR "Missing tool versions file: ${TRIDENT_VERSIONS_FILE}")
-endif()
-
-file(STRINGS "${TRIDENT_VERSIONS_FILE}" TRIDENT_VERSION_LINES)
-foreach(version_line IN LISTS TRIDENT_VERSION_LINES)
-    string(STRIP "${version_line}" version_line)
-    if(version_line STREQUAL "" OR version_line MATCHES "^#")
-        continue()
-    endif()
-    string(REGEX MATCH "^([^ \t]+)[ \t]+([^ \t#]+)" version_match "${version_line}")
-    if(NOT version_match)
-        message(FATAL_ERROR "Invalid tools/versions line: ${version_line}")
-    endif()
-    string(MAKE_C_IDENTIFIER "${CMAKE_MATCH_1}" version_key)
-    set("TRIDENT_TOOL_VERSION_${version_key}" "${CMAKE_MATCH_2}")
-endforeach()
-
-function(trident_tool_version out_var tool_name)
-    string(MAKE_C_IDENTIFIER "${tool_name}" tool_key)
-    if(NOT DEFINED TRIDENT_TOOL_VERSION_${tool_key})
-        message(FATAL_ERROR "Missing ${tool_name} pin in ${TRIDENT_VERSIONS_FILE}")
-    endif()
-    set(${out_var} "${TRIDENT_TOOL_VERSION_${tool_key}}" PARENT_SCOPE)
-endfunction()
-
-function(trident_source_args out_var tool_name tool_url)
-    trident_tool_version(tool_version "${tool_name}")
-    set(tool_source "${TOOLS_SOURCE_DIR}/${tool_name}")
-    if(EXISTS "${tool_source}/.git")
-        set(${out_var}
-            SOURCE_DIR "${tool_source}"
-            DOWNLOAD_COMMAND ""
-            UPDATE_COMMAND "${GIT_EXECUTABLE}" -C "${tool_source}" checkout --detach "${tool_version}"
-            PARENT_SCOPE
-        )
-    else()
-        set(${out_var}
-            GIT_REPOSITORY "${tool_url}"
-            GIT_TAG "${tool_version}"
-            GIT_PROGRESS TRUE
-            SOURCE_DIR "${tool_source}"
-            PARENT_SCOPE
-        )
-    endif()
-endfunction()
-
-function(trident_cmake_tool tool_name tool_url)
-    trident_source_args(source_args "${tool_name}" "${tool_url}")
-    if(tool_name STREQUAL "cpphdl")
-        set(tool_build_command
-            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
-            COMMAND "${_TRIDENT_CMAKE}" -E remove_directory "${CMAKE_BINARY_DIR}/cpphdl/include"
-            COMMAND "${_TRIDENT_CMAKE}" -E make_directory "${CMAKE_BINARY_DIR}/cpphdl"
-            COMMAND "${_TRIDENT_CMAKE}" -E copy_directory
-                "${TOOLS_SOURCE_DIR}/cpphdl/include"
-                "${CMAKE_BINARY_DIR}/cpphdl/include"
-        )
-    elseif(tool_name STREQUAL "slang")
-        set(tool_build_command
-            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --parallel 1
-        )
-    else()
-        set(tool_build_command
-            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CMAKE}" --build <BINARY_DIR>
-        )
-    endif()
-    ExternalProject_Add(${tool_name}
-        ${source_args}
-        EXCLUDE_FROM_ALL TRUE
-        BINARY_DIR "${TOOLS_BUILD_DIR}/${tool_name}"
-        INSTALL_DIR "${TOOLS_INSTALL_DIR}/${tool_name}"
-        CMAKE_COMMAND "${_TRIDENT_CMAKE}"
-        CMAKE_GENERATOR "Unix Makefiles"
-        CMAKE_ARGS
-            ${TRIDENT_COMMON_CMAKE_ARGS}
-            ${ARGN}
-        CONFIGURE_COMMAND
-            "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
-            "${_TRIDENT_CMAKE}"
-            -G "Unix Makefiles"
-            ${TRIDENT_COMMON_CMAKE_ARGS}
-            ${ARGN}
-            -S <SOURCE_DIR>
-            -B <BINARY_DIR>
-        BUILD_COMMAND
-            ${tool_build_command}
-        INSTALL_COMMAND ""
-        STEP_TARGETS download update configure build
-        USES_TERMINAL_DOWNLOAD TRUE
-        USES_TERMINAL_UPDATE TRUE
-        USES_TERMINAL_CONFIGURE TRUE
-        USES_TERMINAL_BUILD TRUE
-    )
-endfunction()
-
-trident_tool_version(CPPHDL_SLANG_VERSION slang)
-ExternalProject_Add(cpphdl_slang
-    GIT_REPOSITORY https://github.com/MikePopoloski/slang.git
-    GIT_TAG "${CPPHDL_SLANG_VERSION}"
-    GIT_PROGRESS TRUE
-    EXCLUDE_FROM_ALL TRUE
-    SOURCE_DIR "${TOOLS_SOURCE_DIR}/cpphdl/hdlcpp/slang"
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    INSTALL_COMMAND ""
-    STEP_TARGETS download
-    USES_TERMINAL_DOWNLOAD TRUE
-)
-
-trident_cmake_tool(cpphdl https://github.com/mirekez/cpphdl.git
-    -DCPPHDL_USE_LOCAL_CONDA=ON
-    -DCPPHDL_FETCH_LLVM=OFF
-    -DCPPHDL_BUILD_HDLCPP=ON
-)
-ExternalProject_Add_StepDependencies(cpphdl configure cpphdl_slang)
-
-trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git)
-
-trident_tool_version(CMAKE_HOST_VERSION cmake)
-string(REGEX REPLACE "^v" "" CMAKE_HOST_VERSION_NUMBER "${CMAKE_HOST_VERSION}")
-
-set(YOSYS_PATCH_COMMAND "")
-if(WIN32 AND CMAKE_VERSION VERSION_LESS 3.27)
-    set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CMAKE}")
-    set(YOSYS_EXTRA_DEPENDS)
-    set(YOSYS_PATCH_COMMAND
-        "${_TRIDENT_CMAKE}"
-            -DYOSYS_SOURCE_DIR=<SOURCE_DIR>
-            -P "${CMAKE_CURRENT_LIST_DIR}/PatchYosysCMakeForWindows.cmake"
-    )
-elseif(CMAKE_VERSION VERSION_LESS 3.27)
-    set(CMAKE_HOST_URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}-linux-x86_64.tar.gz")
-    set(CMAKE_HOST_EXECUTABLE "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake")
-    ExternalProject_Add(cmake_host
-        URL "${CMAKE_HOST_URL}"
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-        EXCLUDE_FROM_ALL TRUE
-        SOURCE_DIR "${TOOLS_BUILD_DIR}/cmake_host_prebuilt"
-        BINARY_DIR "${TOOLS_BUILD_DIR}/cmake_host"
-        INSTALL_DIR "${TOOLS_INSTALL_DIR}/cmake_host"
-        CONFIGURE_COMMAND ""
-        BUILD_COMMAND ""
-        INSTALL_COMMAND
-            "${_TRIDENT_CMAKE}"
-                -DSOURCE_DIR=<SOURCE_DIR>
-                -DINSTALL_DIR=<INSTALL_DIR>
-                -P "${CMAKE_CURRENT_LIST_DIR}/InstallPrebuiltCMake.cmake"
-        STEP_TARGETS download install
-        USES_TERMINAL_DOWNLOAD TRUE
-        USES_TERMINAL_INSTALL TRUE
-    )
-    set(YOSYS_CMAKE_COMMAND "${CMAKE_HOST_EXECUTABLE}")
-    set(YOSYS_EXTRA_DEPENDS cmake_host)
-else()
-    set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CMAKE}")
-    set(YOSYS_EXTRA_DEPENDS)
-endif()
-
 if(WIN32)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
 "#!/usr/bin/env sh
@@ -341,14 +178,175 @@ fi
 
 exec \"\$cmake_cmd_unix\" \"\$@\"
 ")
-    set(TRIDENT_YOSYS_CMAKE_LAUNCHER
-        sh "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh" "${YOSYS_CMAKE_COMMAND}"
-    )
+    set(TRIDENT_CMAKE_LAUNCHER sh "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh")
 else()
-    set(TRIDENT_YOSYS_CMAKE_LAUNCHER
-        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV} "${YOSYS_CMAKE_COMMAND}"
-    )
+    set(TRIDENT_CMAKE_LAUNCHER "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV})
 endif()
+
+set(TRIDENT_VERSIONS_FILE "${CMAKE_CURRENT_LIST_DIR}/versions" CACHE FILEPATH "Pinned tool versions" FORCE)
+if(NOT EXISTS "${TRIDENT_VERSIONS_FILE}")
+    message(FATAL_ERROR "Missing tool versions file: ${TRIDENT_VERSIONS_FILE}")
+endif()
+
+file(STRINGS "${TRIDENT_VERSIONS_FILE}" TRIDENT_VERSION_LINES)
+foreach(version_line IN LISTS TRIDENT_VERSION_LINES)
+    string(STRIP "${version_line}" version_line)
+    if(version_line STREQUAL "" OR version_line MATCHES "^#")
+        continue()
+    endif()
+    string(REGEX MATCH "^([^ \t]+)[ \t]+([^ \t#]+)" version_match "${version_line}")
+    if(NOT version_match)
+        message(FATAL_ERROR "Invalid tools/versions line: ${version_line}")
+    endif()
+    string(MAKE_C_IDENTIFIER "${CMAKE_MATCH_1}" version_key)
+    set("TRIDENT_TOOL_VERSION_${version_key}" "${CMAKE_MATCH_2}")
+endforeach()
+
+function(trident_tool_version out_var tool_name)
+    string(MAKE_C_IDENTIFIER "${tool_name}" tool_key)
+    if(NOT DEFINED TRIDENT_TOOL_VERSION_${tool_key})
+        message(FATAL_ERROR "Missing ${tool_name} pin in ${TRIDENT_VERSIONS_FILE}")
+    endif()
+    set(${out_var} "${TRIDENT_TOOL_VERSION_${tool_key}}" PARENT_SCOPE)
+endfunction()
+
+function(trident_source_args out_var tool_name tool_url)
+    trident_tool_version(tool_version "${tool_name}")
+    set(tool_source "${TOOLS_SOURCE_DIR}/${tool_name}")
+    if(EXISTS "${tool_source}/.git")
+        set(${out_var}
+            SOURCE_DIR "${tool_source}"
+            DOWNLOAD_COMMAND ""
+            UPDATE_COMMAND "${GIT_EXECUTABLE}" -C "${tool_source}" checkout --detach "${tool_version}"
+            PARENT_SCOPE
+        )
+    else()
+        set(${out_var}
+            GIT_REPOSITORY "${tool_url}"
+            GIT_TAG "${tool_version}"
+            GIT_PROGRESS TRUE
+            SOURCE_DIR "${tool_source}"
+            PARENT_SCOPE
+        )
+    endif()
+endfunction()
+
+function(trident_cmake_tool tool_name tool_url)
+    trident_source_args(source_args "${tool_name}" "${tool_url}")
+    if(tool_name STREQUAL "cpphdl")
+        set(tool_build_command
+            ${TRIDENT_CMAKE_LAUNCHER}
+            "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
+            COMMAND "${_TRIDENT_CMAKE}" -E remove_directory "${CMAKE_BINARY_DIR}/cpphdl/include"
+            COMMAND "${_TRIDENT_CMAKE}" -E make_directory "${CMAKE_BINARY_DIR}/cpphdl"
+            COMMAND "${_TRIDENT_CMAKE}" -E copy_directory
+                "${TOOLS_SOURCE_DIR}/cpphdl/include"
+                "${CMAKE_BINARY_DIR}/cpphdl/include"
+        )
+    elseif(tool_name STREQUAL "slang")
+        set(tool_build_command
+            ${TRIDENT_CMAKE_LAUNCHER}
+            "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --parallel 1
+        )
+    else()
+        set(tool_build_command
+            ${TRIDENT_CMAKE_LAUNCHER}
+            "${_TRIDENT_CMAKE}" --build <BINARY_DIR>
+        )
+    endif()
+    ExternalProject_Add(${tool_name}
+        ${source_args}
+        EXCLUDE_FROM_ALL TRUE
+        BINARY_DIR "${TOOLS_BUILD_DIR}/${tool_name}"
+        INSTALL_DIR "${TOOLS_INSTALL_DIR}/${tool_name}"
+        CMAKE_COMMAND "${_TRIDENT_CMAKE}"
+        CMAKE_GENERATOR "Unix Makefiles"
+        CMAKE_ARGS
+            ${TRIDENT_COMMON_CMAKE_ARGS}
+            ${ARGN}
+        CONFIGURE_COMMAND
+            ${TRIDENT_CMAKE_LAUNCHER}
+            "${_TRIDENT_CMAKE}"
+            -G "Unix Makefiles"
+            ${TRIDENT_COMMON_CMAKE_ARGS}
+            ${ARGN}
+            -S <SOURCE_DIR>
+            -B <BINARY_DIR>
+        BUILD_COMMAND
+            ${tool_build_command}
+        INSTALL_COMMAND ""
+        STEP_TARGETS download update configure build
+        USES_TERMINAL_DOWNLOAD TRUE
+        USES_TERMINAL_UPDATE TRUE
+        USES_TERMINAL_CONFIGURE TRUE
+        USES_TERMINAL_BUILD TRUE
+    )
+endfunction()
+
+trident_tool_version(CPPHDL_SLANG_VERSION slang)
+ExternalProject_Add(cpphdl_slang
+    GIT_REPOSITORY https://github.com/MikePopoloski/slang.git
+    GIT_TAG "${CPPHDL_SLANG_VERSION}"
+    GIT_PROGRESS TRUE
+    EXCLUDE_FROM_ALL TRUE
+    SOURCE_DIR "${TOOLS_SOURCE_DIR}/cpphdl/hdlcpp/slang"
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND ""
+    STEP_TARGETS download
+    USES_TERMINAL_DOWNLOAD TRUE
+)
+
+trident_cmake_tool(cpphdl https://github.com/mirekez/cpphdl.git
+    -DCPPHDL_USE_LOCAL_CONDA=ON
+    -DCPPHDL_FETCH_LLVM=OFF
+    -DCPPHDL_BUILD_HDLCPP=ON
+)
+ExternalProject_Add_StepDependencies(cpphdl configure cpphdl_slang)
+
+trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git)
+
+trident_tool_version(CMAKE_HOST_VERSION cmake)
+string(REGEX REPLACE "^v" "" CMAKE_HOST_VERSION_NUMBER "${CMAKE_HOST_VERSION}")
+
+set(YOSYS_PATCH_COMMAND "")
+if(WIN32 AND CMAKE_VERSION VERSION_LESS 3.27)
+    set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CMAKE}")
+    set(YOSYS_EXTRA_DEPENDS)
+    set(YOSYS_PATCH_COMMAND
+        "${_TRIDENT_CMAKE}"
+            -DYOSYS_SOURCE_DIR=<SOURCE_DIR>
+            -P "${CMAKE_CURRENT_LIST_DIR}/PatchYosysCMakeForWindows.cmake"
+    )
+elseif(CMAKE_VERSION VERSION_LESS 3.27)
+    set(CMAKE_HOST_URL "https://github.com/Kitware/CMake/releases/download/${CMAKE_HOST_VERSION}/cmake-${CMAKE_HOST_VERSION_NUMBER}-linux-x86_64.tar.gz")
+    set(CMAKE_HOST_EXECUTABLE "${TOOLS_INSTALL_DIR}/cmake_host/bin/cmake")
+    ExternalProject_Add(cmake_host
+        URL "${CMAKE_HOST_URL}"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        EXCLUDE_FROM_ALL TRUE
+        SOURCE_DIR "${TOOLS_BUILD_DIR}/cmake_host_prebuilt"
+        BINARY_DIR "${TOOLS_BUILD_DIR}/cmake_host"
+        INSTALL_DIR "${TOOLS_INSTALL_DIR}/cmake_host"
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND
+            "${_TRIDENT_CMAKE}"
+                -DSOURCE_DIR=<SOURCE_DIR>
+                -DINSTALL_DIR=<INSTALL_DIR>
+                -P "${CMAKE_CURRENT_LIST_DIR}/InstallPrebuiltCMake.cmake"
+        STEP_TARGETS download install
+        USES_TERMINAL_DOWNLOAD TRUE
+        USES_TERMINAL_INSTALL TRUE
+    )
+    set(YOSYS_CMAKE_COMMAND "${CMAKE_HOST_EXECUTABLE}")
+    set(YOSYS_EXTRA_DEPENDS cmake_host)
+else()
+    set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CMAKE}")
+    set(YOSYS_EXTRA_DEPENDS)
+endif()
+
+set(TRIDENT_YOSYS_CMAKE_LAUNCHER ${TRIDENT_CMAKE_LAUNCHER} "${YOSYS_CMAKE_COMMAND}")
 
 trident_source_args(yosys_source_args yosys https://github.com/YosysHQ/yosys.git)
 ExternalProject_Add(yosys
