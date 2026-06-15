@@ -478,7 +478,7 @@ ExternalProject_Add(yosys_slang
         -DBUILD_AS_PLUGIN=ON
         -DYOSYS_CONFIG=${TOOLS_BUILD_DIR}/yosys/yosys-config
     CONFIGURE_COMMAND
-        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+        ${TRIDENT_CMAKE_LAUNCHER}
         "${_TRIDENT_CMAKE}"
         -G "Unix Makefiles"
         ${TRIDENT_COMMON_CMAKE_ARGS}
@@ -487,7 +487,7 @@ ExternalProject_Add(yosys_slang
         -S <SOURCE_DIR>
         -B <BINARY_DIR>
     BUILD_COMMAND
-        "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV}
+        ${TRIDENT_CMAKE_LAUNCHER}
         "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target yosys-slang --parallel 1
         COMMAND "${_TRIDENT_CMAKE}" -E make_directory "${TOOLS_BUILD_DIR}/yosys/share/plugins"
         COMMAND "${_TRIDENT_CMAKE}" -E copy_if_different
