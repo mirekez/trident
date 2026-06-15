@@ -300,6 +300,7 @@ function(trident_cmake_tool tool_name tool_url)
     set(tool_patch_command "")
     if(tool_name STREQUAL "cpphdl")
         set(tool_patch_command
+            ${TRIDENT_CMAKE_LAUNCHER}
             "${_TRIDENT_CMAKE}"
                 -DCPPHDL_SOURCE_DIR=<SOURCE_DIR>
                 -P "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlLocalConda.cmake"
