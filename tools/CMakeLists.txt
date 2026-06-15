@@ -444,16 +444,20 @@ ExternalProject_Add(yosys
     USES_TERMINAL_BUILD TRUE
 )
 
+if(WIN32)
+    ExternalProject_Add_Step(yosys windows_import_alias
+        DEPENDEES build
+        COMMAND "${_TRIDENT_CMAKE}" -E copy_if_different
+            "${TOOLS_BUILD_DIR}/yosys/yosys.exe.a"
+            "${TOOLS_BUILD_DIR}/yosys/libyosys_exe.a"
+    )
+endif()
+
 trident_tool_version(YOSYS_SLANG_VERSION yosys-slang)
 set(YOSYS_SLANG_SOURCE_DIR "${TOOLS_SOURCE_DIR}/yosys-slang")
 set(TRIDENT_YOSYS_CONFIG_FOR_PLUGIN "${TOOLS_BUILD_DIR}/yosys/yosys-config")
 set(YOSYS_SLANG_PATCH_COMMAND "")
 if(WIN32)
-    set(YOSYS_SLANG_PATCH_COMMAND
-        "${_TRIDENT_CMAKE}"
-            -DYOSYS_SLANG_SOURCE_DIR=<SOURCE_DIR>
-            -P "${CMAKE_CURRENT_LIST_DIR}/PatchYosysSlangForWindows.cmake"
-    )
     find_program(TRIDENT_SH_EXECUTABLE
         NAMES sh sh.exe
         PATHS
