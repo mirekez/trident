@@ -447,7 +447,13 @@ ExternalProject_Add(yosys
 trident_tool_version(YOSYS_SLANG_VERSION yosys-slang)
 set(YOSYS_SLANG_SOURCE_DIR "${TOOLS_SOURCE_DIR}/yosys-slang")
 set(TRIDENT_YOSYS_CONFIG_FOR_PLUGIN "${TOOLS_BUILD_DIR}/yosys/yosys-config")
+set(YOSYS_SLANG_PATCH_COMMAND "")
 if(WIN32)
+    set(YOSYS_SLANG_PATCH_COMMAND
+        "${_TRIDENT_CMAKE}"
+            -DYOSYS_SLANG_SOURCE_DIR=<SOURCE_DIR>
+            -P "${CMAKE_CURRENT_LIST_DIR}/PatchYosysSlangForWindows.cmake"
+    )
     find_program(TRIDENT_SH_EXECUTABLE
         NAMES sh sh.exe
         PATHS
@@ -490,6 +496,7 @@ ExternalProject_Add(yosys_slang
     ${yosys_slang_source_args}
     EXCLUDE_FROM_ALL TRUE
     DEPENDS yosys
+    PATCH_COMMAND ${YOSYS_SLANG_PATCH_COMMAND}
     BINARY_DIR "${TOOLS_BUILD_DIR}/yosys-slang"
     INSTALL_DIR "${TOOLS_INSTALL_DIR}/yosys-slang"
     CMAKE_COMMAND "${_TRIDENT_CMAKE}"
@@ -498,6 +505,8 @@ ExternalProject_Add(yosys_slang
         ${TRIDENT_COMMON_CMAKE_ARGS}
         -DBUILD_AS_PLUGIN=ON
         -DYOSYS_CONFIG=${TRIDENT_YOSYS_CONFIG_FOR_PLUGIN}
+        "-DCMAKE_C_FLAGS_RELEASE=-O1 -g0 -DNDEBUG"
+        "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -g0 -DNDEBUG"
     CONFIGURE_COMMAND
         ${TRIDENT_CMAKE_LAUNCHER}
         "${_TRIDENT_CMAKE}"
@@ -505,6 +514,8 @@ ExternalProject_Add(yosys_slang
         ${TRIDENT_COMMON_CMAKE_ARGS}
         -DBUILD_AS_PLUGIN=ON
         -DYOSYS_CONFIG=${TRIDENT_YOSYS_CONFIG_FOR_PLUGIN}
+        "-DCMAKE_C_FLAGS_RELEASE=-O1 -g0 -DNDEBUG"
+        "-DCMAKE_CXX_FLAGS_RELEASE=-O1 -g0 -DNDEBUG"
         -S <SOURCE_DIR>
         -B <BINARY_DIR>
     BUILD_COMMAND
