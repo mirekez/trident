@@ -15,6 +15,7 @@ if(WIN32)
 set (CMAKE_LINKER "${_TRIDENT_CONDA_BIN}/ld64.lld.exe")
 set (CMAKE_C_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-w64-mingw32-gcc.exe")
 set (CMAKE_CXX_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-w64-mingw32-g++.exe")
+set (TRIDENT_CPPHDL_LLVM_PREFIX "${_TRIDENT_CONDA_ROOT}/Library")
 set (CMAKE_GENERATOR "Unix Makefiles")
 set (_TRIDENT_MAKE_PROGRAM "${_TRIDENT_CONDA_BIN}/make.exe")
 foreach(_TRIDENT_MAKE_CANDIDATE
@@ -34,6 +35,7 @@ else()
 set (CMAKE_LINKER "${_TRIDENT_CONDA_BIN}/x86_64-conda-linux-gnu-ld")
 set (CMAKE_C_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-conda-linux-gnu-gcc")
 set (CMAKE_CXX_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-conda-linux-gnu-g++")
+set (TRIDENT_CPPHDL_LLVM_PREFIX "${_TRIDENT_CONDA_ROOT}")
 set (CMAKE_GENERATOR "Unix Makefiles")
 set (CMAKE_MAKE_PROGRAM "${_TRIDENT_CONDA_BIN}/make" CACHE FILEPATH "Make program" FORCE)
 set (CMAKE_C_COMPILER_FORCED "TRUE")
@@ -295,7 +297,13 @@ endif()
 
 function(trident_cmake_tool tool_name tool_url)
     trident_source_args(source_args "${tool_name}" "${tool_url}")
+    set(tool_patch_command "")
     if(tool_name STREQUAL "cpphdl")
+        set(tool_patch_command
+            "${_TRIDENT_CMAKE}"
+                -DCPPHDL_SOURCE_DIR=<SOURCE_DIR>
+                -P "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlLocalConda.cmake"
+        )
         set(tool_build_command
             ${TRIDENT_CMAKE_LAUNCHER}
             "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
@@ -323,6 +331,7 @@ function(trident_cmake_tool tool_name tool_url)
         INSTALL_DIR "${TOOLS_INSTALL_DIR}/${tool_name}"
         CMAKE_COMMAND "${_TRIDENT_CMAKE}"
         CMAKE_GENERATOR "Unix Makefiles"
+        PATCH_COMMAND ${tool_patch_command}
         CMAKE_ARGS
             ${TRIDENT_COMMON_CMAKE_ARGS}
             ${ARGN}
@@ -361,6 +370,7 @@ ExternalProject_Add(cpphdl_slang
 
 trident_cmake_tool(cpphdl https://github.com/mirekez/cpphdl.git
     -DCPPHDL_USE_LOCAL_CONDA=ON
+    -DCPPHDL_LOCAL_CONDA_PREFIX=${TRIDENT_CPPHDL_LLVM_PREFIX}
     -DCPPHDL_FETCH_LLVM=OFF
     -DCPPHDL_BUILD_HDLCPP=ON
 )
