@@ -446,6 +446,27 @@ ExternalProject_Add(yosys
 
 trident_tool_version(YOSYS_SLANG_VERSION yosys-slang)
 set(YOSYS_SLANG_SOURCE_DIR "${TOOLS_SOURCE_DIR}/yosys-slang")
+set(TRIDENT_YOSYS_CONFIG_FOR_PLUGIN "${TOOLS_BUILD_DIR}/yosys/yosys-config")
+if(WIN32)
+    find_program(TRIDENT_SH_EXECUTABLE
+        NAMES sh sh.exe
+        PATHS
+            "${_TRIDENT_CONDA_ROOT}/Library/usr/bin"
+            "${_TRIDENT_CONDA_ROOT}/usr/bin"
+            "${_TRIDENT_CONDA_ROOT}/bin"
+        ENV PATH
+        NO_DEFAULT_PATH
+    )
+    if(NOT TRIDENT_SH_EXECUTABLE)
+        set(TRIDENT_SH_EXECUTABLE "sh")
+    endif()
+    file(TO_CMAKE_PATH "${TRIDENT_SH_EXECUTABLE}" TRIDENT_SH_EXECUTABLE)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunYosysConfig.cmd"
+"@echo off\r
+\"${TRIDENT_SH_EXECUTABLE}\" \"${TOOLS_BUILD_DIR}/yosys/yosys-config\" %*\r
+")
+    set(TRIDENT_YOSYS_CONFIG_FOR_PLUGIN "${CMAKE_CURRENT_BINARY_DIR}/RunYosysConfig.cmd")
+endif()
 if(EXISTS "${YOSYS_SLANG_SOURCE_DIR}/.git")
     set(yosys_slang_source_args
         SOURCE_DIR "${YOSYS_SLANG_SOURCE_DIR}"
@@ -476,14 +497,14 @@ ExternalProject_Add(yosys_slang
     CMAKE_ARGS
         ${TRIDENT_COMMON_CMAKE_ARGS}
         -DBUILD_AS_PLUGIN=ON
-        -DYOSYS_CONFIG=${TOOLS_BUILD_DIR}/yosys/yosys-config
+        -DYOSYS_CONFIG=${TRIDENT_YOSYS_CONFIG_FOR_PLUGIN}
     CONFIGURE_COMMAND
         ${TRIDENT_CMAKE_LAUNCHER}
         "${_TRIDENT_CMAKE}"
         -G "Unix Makefiles"
         ${TRIDENT_COMMON_CMAKE_ARGS}
         -DBUILD_AS_PLUGIN=ON
-        -DYOSYS_CONFIG=${TOOLS_BUILD_DIR}/yosys/yosys-config
+        -DYOSYS_CONFIG=${TRIDENT_YOSYS_CONFIG_FOR_PLUGIN}
         -S <SOURCE_DIR>
         -B <BINARY_DIR>
     BUILD_COMMAND
