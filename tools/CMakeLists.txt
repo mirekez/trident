@@ -299,12 +299,6 @@ function(trident_cmake_tool tool_name tool_url)
     trident_source_args(source_args "${tool_name}" "${tool_url}")
     set(tool_patch_command "")
     if(tool_name STREQUAL "cpphdl")
-        set(tool_patch_command
-            ${TRIDENT_CMAKE_LAUNCHER}
-            "${_TRIDENT_CMAKE}"
-                -DCPPHDL_SOURCE_DIR=<SOURCE_DIR>
-                -P "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlLocalConda.cmake"
-        )
         set(tool_build_command
             ${TRIDENT_CMAKE_LAUNCHER}
             "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
