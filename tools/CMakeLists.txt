@@ -156,14 +156,14 @@ to_unix_path() {
         ?:/*)
             drive=\"\$(printf '%s' \"\${path_value%%:*}\" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')\"
             rest=\"\${path_value#?:}\"
-            printf '/%s%s\\n' \"\$drive\" \"\$rest\"
+            printf '/%s%s\n' \"\$drive\" \"\$rest\"
             return 0
             ;;
     esac
     if command -v cygpath >/dev/null 2>&1; then
-        cygpath -u \"\$path_value\" 2>/dev/null || printf '%s\\n' \"\$path_value\"
+        cygpath -u \"\$path_value\" 2>/dev/null || printf '%s\n' \"\$path_value\"
     else
-        printf '%s\\n' \"\$path_value\"
+        printf '%s\n' \"\$path_value\"
     fi
 }
 
@@ -256,14 +256,14 @@ to_unix_path() {
         ?:/*)
             drive="$(printf '%s' "${path_value%%:*}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')"
             rest="${path_value#?:}"
-            printf '/%s%s\\n' "$drive" "$rest"
+            printf '/%s%s\n' "$drive" "$rest"
             return 0
             ;;
     esac
     if command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$path_value" 2>/dev/null || printf '%s\\n' "$path_value"
+        cygpath -u "$path_value" 2>/dev/null || printf '%s\n' "$path_value"
     else
-        printf '%s\\n' "$path_value"
+        printf '%s\n' "$path_value"
     fi
 }
 
