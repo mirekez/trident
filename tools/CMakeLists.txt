@@ -15,7 +15,7 @@ if(WIN32)
 set (CMAKE_LINKER "${_TRIDENT_CONDA_BIN}/ld64.lld.exe")
 set (CMAKE_C_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-w64-mingw32-gcc.exe")
 set (CMAKE_CXX_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-w64-mingw32-g++.exe")
-set (TRIDENT_CPPHDL_LLVM_PREFIX "${_TRIDENT_CONDA_ROOT}/Library")
+set (TRIDENT_CPPHDL_LLVM_PREFIX "${_TRIDENT_CONDA_ROOT}/Library" CACHE PATH "CppHDL LLVM/Clang prefix" FORCE)
 set (CMAKE_GENERATOR "Unix Makefiles")
 set (_TRIDENT_MAKE_PROGRAM "${_TRIDENT_CONDA_BIN}/make.exe")
 foreach(_TRIDENT_MAKE_CANDIDATE
@@ -35,11 +35,30 @@ else()
 set (CMAKE_LINKER "${_TRIDENT_CONDA_BIN}/x86_64-conda-linux-gnu-ld")
 set (CMAKE_C_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-conda-linux-gnu-gcc")
 set (CMAKE_CXX_COMPILER "${_TRIDENT_CONDA_BIN}/x86_64-conda-linux-gnu-g++")
-set (TRIDENT_CPPHDL_LLVM_PREFIX "${_TRIDENT_CONDA_ROOT}")
+set (TRIDENT_CPPHDL_LLVM_PREFIX "${_TRIDENT_CONDA_ROOT}" CACHE PATH "CppHDL LLVM/Clang prefix" FORCE)
 set (CMAKE_GENERATOR "Unix Makefiles")
 set (CMAKE_MAKE_PROGRAM "${_TRIDENT_CONDA_BIN}/make" CACHE FILEPATH "Make program" FORCE)
 set (CMAKE_C_COMPILER_FORCED "TRUE")
 set (CMAKE_CXX_COMPILER_FORCED "TRUE")
+endif()
+
+find_path(TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR
+    NAMES clang/Tooling/Tooling.h
+    PATHS
+        "${TRIDENT_CPPHDL_LLVM_PREFIX}/include"
+        "${_TRIDENT_CONDA_ROOT}/Library/include"
+        "${_TRIDENT_CONDA_ROOT}/include"
+    NO_DEFAULT_PATH
+)
+if(TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR)
+    get_filename_component(TRIDENT_CPPHDL_LLVM_PREFIX
+        "${TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR}" DIRECTORY)
+    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_LLVM_PREFIX}" TRIDENT_CPPHDL_LLVM_PREFIX)
+    message(STATUS "CppHDL LLVM/Clang prefix: ${TRIDENT_CPPHDL_LLVM_PREFIX}")
+else()
+    message(WARNING
+        "CppHDL did not find clang/Tooling/Tooling.h in local conda. "
+        "Checked ${_TRIDENT_CONDA_ROOT}/Library/include and ${_TRIDENT_CONDA_ROOT}/include.")
 endif()
 
 cmake_minimum_required(VERSION 3.20)
@@ -88,6 +107,24 @@ set(TRIDENT_COMMON_CMAKE_ARGS
     -DCMAKE_LINKER=${CMAKE_LINKER}
     -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
 )
+
+set(TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
+    -DCMAKE_PREFIX_PATH=${TRIDENT_CPPHDL_LLVM_PREFIX}
+    -DCPPHDL_USE_LOCAL_CONDA=ON
+    -DCPPHDL_LOCAL_CONDA_PREFIX=${TRIDENT_CPPHDL_LLVM_PREFIX}
+    -DCPPHDL_FETCH_LLVM=OFF
+    -DCPPHDL_BUILD_HDLCPP=ON
+)
+if(EXISTS "${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/llvm/LLVMConfig.cmake")
+    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
+        -DLLVM_DIR=${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/llvm
+    )
+endif()
+if(EXISTS "${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/clang/ClangConfig.cmake")
+    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
+        -DClang_DIR=${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/clang
+    )
+endif()
 
 if(WIN32)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
@@ -364,10 +401,7 @@ ExternalProject_Add(cpphdl_slang
 )
 
 trident_cmake_tool(cpphdl https://github.com/mirekez/cpphdl.git
-    -DCPPHDL_USE_LOCAL_CONDA=ON
-    -DCPPHDL_LOCAL_CONDA_PREFIX=${TRIDENT_CPPHDL_LLVM_PREFIX}
-    -DCPPHDL_FETCH_LLVM=OFF
-    -DCPPHDL_BUILD_HDLCPP=ON
+    ${TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS}
 )
 ExternalProject_Add_StepDependencies(cpphdl configure cpphdl_slang)
 
