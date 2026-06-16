@@ -247,8 +247,34 @@ fi
 
 exec \"\$cmake_cmd_unix\" \"\$@\"
 ")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCpphdlPatch.sh" [=[#!/usr/bin/env sh
+set -eu
+
+to_unix_path() {
+    path_value="$1"
+    case "$path_value" in
+        ?:/*)
+            drive="$(printf '%s' "${path_value%%:*}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')"
+            rest="${path_value#?:}"
+            printf '/%s%s\\n' "$drive" "$rest"
+            return 0
+            ;;
+    esac
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -u "$path_value" 2>/dev/null || printf '%s\\n' "$path_value"
+    else
+        printf '%s\\n' "$path_value"
+    fi
+}
+
+script_path="$(to_unix_path "$1")"
+source_dir="$(to_unix_path "$2")"
+exec sh "$script_path" "$source_dir"
+]=])
+    set(TRIDENT_CPPHDL_PATCH_COMMAND sh "${CMAKE_CURRENT_BINARY_DIR}/RunCpphdlPatch.sh" "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlUseExplicitLlvm.sh" <SOURCE_DIR>)
     set(TRIDENT_CMAKE_LAUNCHER sh "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh")
 else()
+    set(TRIDENT_CPPHDL_PATCH_COMMAND sh "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlUseExplicitLlvm.sh" <SOURCE_DIR>)
     set(TRIDENT_CMAKE_LAUNCHER "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV})
 endif()
 
@@ -358,7 +384,7 @@ function(trident_cmake_tool tool_name tool_url)
     set(tool_patch_command "")
     if(tool_name STREQUAL "cpphdl")
         set(tool_patch_command
-            sh "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlUseExplicitLlvm.sh" <SOURCE_DIR>
+            ${TRIDENT_CPPHDL_PATCH_COMMAND}
         )
         set(tool_build_command
             ${TRIDENT_CMAKE_LAUNCHER}
