@@ -42,19 +42,23 @@ set (CMAKE_C_COMPILER_FORCED "TRUE")
 set (CMAKE_CXX_COMPILER_FORCED "TRUE")
 endif()
 
-find_path(TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR
-    NAMES clang/Tooling/Tooling.h
-    PATHS
-        "${TRIDENT_CPPHDL_LLVM_PREFIX}/include"
-        "${_TRIDENT_CONDA_ROOT}/Library/include"
-        "${_TRIDENT_CONDA_ROOT}/include"
-    NO_DEFAULT_PATH
+set(TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR "")
+foreach(_TRIDENT_CPPHDL_INCLUDE_CANDIDATE
+    "${TRIDENT_CPPHDL_LLVM_PREFIX}/include"
+    "${_TRIDENT_CONDA_ROOT}/Library/include"
+    "${_TRIDENT_CONDA_ROOT}/include"
 )
+    if(EXISTS "${_TRIDENT_CPPHDL_INCLUDE_CANDIDATE}/clang/Tooling/Tooling.h")
+        set(TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR "${_TRIDENT_CPPHDL_INCLUDE_CANDIDATE}")
+        break()
+    endif()
+endforeach()
 if(TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR)
     get_filename_component(TRIDENT_CPPHDL_LLVM_PREFIX
         "${TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR}" DIRECTORY)
     file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_LLVM_PREFIX}" TRIDENT_CPPHDL_LLVM_PREFIX)
     message(STATUS "CppHDL LLVM/Clang prefix: ${TRIDENT_CPPHDL_LLVM_PREFIX}")
+    message(STATUS "CppHDL Clang Tooling include: ${TRIDENT_CPPHDL_CLANG_TOOLING_INCLUDE_DIR}")
 else()
     message(WARNING
         "CppHDL did not find clang/Tooling/Tooling.h in local conda. "
@@ -115,15 +119,27 @@ set(TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
     -DCPPHDL_FETCH_LLVM=OFF
     -DCPPHDL_BUILD_HDLCPP=ON
 )
-if(EXISTS "${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/llvm/LLVMConfig.cmake")
-    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
-        -DLLVM_DIR=${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/llvm
-    )
+foreach(_TRIDENT_CPPHDL_PACKAGE_PREFIX
+    "${TRIDENT_CPPHDL_LLVM_PREFIX}"
+    "${_TRIDENT_CONDA_ROOT}/Library"
+    "${_TRIDENT_CONDA_ROOT}"
+)
+    if(NOT TRIDENT_CPPHDL_LLVM_DIR AND
+            EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/llvm/LLVMConfig.cmake")
+        set(TRIDENT_CPPHDL_LLVM_DIR "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/llvm")
+    endif()
+    if(NOT TRIDENT_CPPHDL_CLANG_DIR AND
+            EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/clang/ClangConfig.cmake")
+        set(TRIDENT_CPPHDL_CLANG_DIR "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/clang")
+    endif()
+endforeach()
+if(TRIDENT_CPPHDL_LLVM_DIR)
+    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DLLVM_DIR=${TRIDENT_CPPHDL_LLVM_DIR})
+    message(STATUS "CppHDL LLVM_DIR: ${TRIDENT_CPPHDL_LLVM_DIR}")
 endif()
-if(EXISTS "${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/clang/ClangConfig.cmake")
-    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
-        -DClang_DIR=${TRIDENT_CPPHDL_LLVM_PREFIX}/lib/cmake/clang
-    )
+if(TRIDENT_CPPHDL_CLANG_DIR)
+    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DClang_DIR=${TRIDENT_CPPHDL_CLANG_DIR})
+    message(STATUS "CppHDL Clang_DIR: ${TRIDENT_CPPHDL_CLANG_DIR}")
 endif()
 
 if(WIN32)
@@ -186,6 +202,11 @@ if [ ! -f \"\$cmake_cmd_unix\" ]; then
 fi
 
 \"\$cmake_cmd_unix\" --version
+
+echo \"  arguments:\"
+for arg in \"\$@\"; do
+    echo \"    \$arg\"
+done
 
 build_dir=\"\"
 source_dir=\"\"
