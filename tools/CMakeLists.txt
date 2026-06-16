@@ -267,11 +267,55 @@ to_unix_path() {
     fi
 }
 
-script_path="$(to_unix_path "$1")"
-source_dir="$(to_unix_path "$2")"
-exec sh "$script_path" "$source_dir"
+source_dir="$(to_unix_path "${1:-}")"
+if [ -z "$source_dir" ]; then
+    echo "CPPHDL source directory argument is required" >&2
+    exit 2
+fi
+
+cmake_file="$source_dir/CMakeLists.txt"
+echo "Patching cpphdl explicit LLVM_DIR/Clang_DIR support"
+echo "  source: $source_dir"
+
+if [ ! -f "$cmake_file" ]; then
+    echo "Missing $cmake_file" >&2
+    exit 2
+fi
+
+if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_PATCH' "$cmake_file"; then
+    echo "  already patched"
+    exit 0
+fi
+
+tmp_file="$cmake_file.tmp.$$"
+awk '
+BEGIN { patched = 0 }
+$0 == "if(CPPHDL_LLVM_PREFIXES)" && patched == 0 {
+    print "if(LLVM_DIR AND Clang_DIR)"
+    print "  # CPPHDL_EXPLICIT_LLVM_DIR_PATCH: conda packages may provide CMake configs"
+    print "  # even when clang/Tooling headers are not under the probed prefix."
+    print "  message(STATUS \"CppHDL using explicit LLVM_DIR=${LLVM_DIR}\")"
+    print "  message(STATUS \"CppHDL using explicit Clang_DIR=${Clang_DIR}\")"
+    print "  find_package(LLVM REQUIRED CONFIG)"
+    print "  find_package(Clang REQUIRED CONFIG)"
+    print "  include_directories(${LLVM_INCLUDE_DIRS})"
+    print "  include_directories(${CLANG_INCLUDE_DIRS})"
+    print "elseif(CPPHDL_LLVM_PREFIXES)"
+    patched = 1
+    next
+}
+{ print }
+END {
+    if (patched == 0) {
+        print "Could not locate LLVM find_package block" > "/dev/stderr"
+        exit 2
+    }
+}
+' "$cmake_file" > "$tmp_file"
+mv "$tmp_file" "$cmake_file"
+echo "  patched CMakeLists.txt"
 ]=])
-    set(TRIDENT_CPPHDL_PATCH_COMMAND sh "${CMAKE_CURRENT_BINARY_DIR}/RunCpphdlPatch.sh" "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlUseExplicitLlvm.sh" <SOURCE_DIR>)
+    set(TRIDENT_CPPHDL_PATCH_COMMAND sh "${CMAKE_CURRENT_BINARY_DIR}/RunCpphdlPatch.sh" <SOURCE_DIR>)
     set(TRIDENT_CMAKE_LAUNCHER sh "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh")
 else()
     set(TRIDENT_CPPHDL_PATCH_COMMAND sh "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlUseExplicitLlvm.sh" <SOURCE_DIR>)
