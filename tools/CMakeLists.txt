@@ -328,7 +328,7 @@ if [ ! -f "$cmake_file" ]; then
     exit 2
 fi
 
-if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_PATCH' "$cmake_file"; then
+if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_PATCH' "$cmake_file"; then
     echo "  already patched"
     exit 0
 fi
@@ -337,7 +337,7 @@ tmp_file="$cmake_file.tmp.$$"
 awk '
 function print_explicit_block() {
     print "if(LLVM_DIR AND Clang_DIR)"
-    print "  # CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_PATCH: conda packages may provide CMake configs"
+    print "  # CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_PATCH: conda packages may provide CMake configs"
     print "  # even when clang/Tooling headers are not under the probed prefix."
     print "  if(NOT TARGET ZLIB::ZLIB)"
     print "    if(TRIDENT_ZLIB_LIBRARY)"
@@ -353,6 +353,13 @@ function print_explicit_block() {
     print "  message(STATUS \"CppHDL using explicit LLVM_DIR=${LLVM_DIR}\")"
     print "  message(STATUS \"CppHDL using explicit Clang_DIR=${Clang_DIR}\")"
     print "  find_package(LLVM REQUIRED CONFIG)"
+    print "  if(TARGET LLVMSupport)"
+    print "    get_target_property(_cpphdl_llvm_support_links LLVMSupport INTERFACE_LINK_LIBRARIES)"
+    print "    if(_cpphdl_llvm_support_links)"
+    print "      list(FILTER _cpphdl_llvm_support_links EXCLUDE REGEX \".*([Dd][Ii][Aa][ /\\\\]SDK|diaguids).*\")"
+    print "      set_target_properties(LLVMSupport PROPERTIES INTERFACE_LINK_LIBRARIES \"${_cpphdl_llvm_support_links}\")"
+    print "    endif()"
+    print "  endif()"
     print "  find_package(Clang REQUIRED CONFIG)"
     print "  include_directories(${LLVM_INCLUDE_DIRS})"
     print "  include_directories(${CLANG_INCLUDE_DIRS})"
