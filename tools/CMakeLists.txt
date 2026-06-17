@@ -185,6 +185,21 @@ else()
         "LLVMConfig may fail if it requires ZLIB::ZLIB.")
 endif()
 
+file(GLOB TRIDENT_CPPHDL_STDCXXEXP_CANDIDATES
+    "${_TRIDENT_CONDA_ROOT}/Library/lib/gcc/*/*/libstdc++exp.a"
+    "${_TRIDENT_CONDA_ROOT}/Library/lib/gcc/*/*/libstdc++exp.lib"
+    "${_TRIDENT_CONDA_ROOT}/lib/gcc/*/*/libstdc++exp.a"
+    "${_TRIDENT_CONDA_ROOT}/lib/gcc/*/*/libstdc++exp.lib"
+)
+if(TRIDENT_CPPHDL_STDCXXEXP_CANDIDATES)
+    list(GET TRIDENT_CPPHDL_STDCXXEXP_CANDIDATES 0 TRIDENT_CPPHDL_STDCXXEXP)
+    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_STDCXXEXP}" TRIDENT_CPPHDL_STDCXXEXP)
+    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
+        -DCPPHDL_STDCXXEXP=${TRIDENT_CPPHDL_STDCXXEXP}
+    )
+    message(STATUS "CppHDL stdc++exp: ${TRIDENT_CPPHDL_STDCXXEXP}")
+endif()
+
 if(WIN32)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh"
 "#!/usr/bin/env sh
@@ -328,7 +343,7 @@ if [ ! -f "$cmake_file" ]; then
     exit 2
 fi
 
-if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH' "$cmake_file"; then
+if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH' "$cmake_file" && grep -q 'CPPHDL_EXPLICIT_CLANG_LINK_PATCH' "$cmake_file"; then
     echo "  already patched"
     exit 0
 fi
@@ -385,7 +400,7 @@ function print_explicit_block() {
     print "  include_directories(${LLVM_INCLUDE_DIRS})"
     print "  include_directories(${CLANG_INCLUDE_DIRS})"
 }
-BEGIN { patched = 0; skipping = 0 }
+BEGIN { patched = 0; skipping = 0; link_patched = 0 }
 ($0 == "if(CPPHDL_LLVM_PREFIXES)" || $0 == "if(LLVM_DIR AND Clang_DIR)") && patched == 0 {
     print_explicit_block()
     patched = 1
@@ -399,10 +414,49 @@ skipping == 1 {
     }
     next
 }
+$0 == "foreach(dependency" && link_patched == 0 {
+    print "# CPPHDL_EXPLICIT_CLANG_LINK_PATCH: static Windows conda Clang needs explicit libs."
+    print "set(CPPHDL_TRIDENT_CLANG_LIBS"
+    print "  clangTooling"
+    print "  clangToolingCore"
+    print "  clangFrontendTool"
+    print "  clangFrontend"
+    print "  clangDriver"
+    print "  clangSerialization"
+    print "  clangParse"
+    print "  clangSema"
+    print "  clangAnalysis"
+    print "  clangASTMatchers"
+    print "  clangAST"
+    print "  clangRewrite"
+    print "  clangRewriteFrontend"
+    print "  clangEdit"
+    print "  clangLex"
+    print "  clangBasic"
+    print ")"
+    print "foreach(_cpphdl_clang_lib IN LISTS CPPHDL_TRIDENT_CLANG_LIBS)"
+    print "  if(TARGET ${_cpphdl_clang_lib})"
+    print "    target_link_libraries(cpphdl PRIVATE ${_cpphdl_clang_lib})"
+    print "  endif()"
+    print "endforeach()"
+    print "if(COMMAND llvm_map_components_to_libnames)"
+    print "  llvm_map_components_to_libnames(CPPHDL_TRIDENT_LLVM_LIBS support option core)"
+    print "  target_link_libraries(cpphdl PRIVATE ${CPPHDL_TRIDENT_LLVM_LIBS})"
+    print "elseif(TARGET LLVM)"
+    print "  target_link_libraries(cpphdl PRIVATE LLVM)"
+    print "elseif(LLVM_LIBRARIES)"
+    print "  target_link_libraries(cpphdl PRIVATE ${LLVM_LIBRARIES})"
+    print "endif()"
+    link_patched = 1
+}
 { print }
 END {
     if (patched == 0) {
         print "Could not locate LLVM find_package block" > "/dev/stderr"
+        exit 2
+    }
+    if (link_patched == 0) {
+        print "Could not locate cpphdl dependency block" > "/dev/stderr"
         exit 2
     }
 }
