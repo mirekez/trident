@@ -160,20 +160,28 @@ if(TRIDENT_CPPHDL_CLANG_DIR)
     list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DClang_DIR=${TRIDENT_CPPHDL_CLANG_DIR})
     message(STATUS "CppHDL Clang_DIR: ${TRIDENT_CPPHDL_CLANG_DIR}")
 endif()
-if(TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR AND TRIDENT_CPPHDL_ZLIB_LIBRARY)
+if(TRIDENT_CPPHDL_ZLIB_LIBRARY)
     file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_ZLIB_LIBRARY}" TRIDENT_CPPHDL_ZLIB_LIBRARY)
-    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}" TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR)
     file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_ZLIB_ROOT}" TRIDENT_CPPHDL_ZLIB_ROOT)
     list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
         -DZLIB_ROOT=${TRIDENT_CPPHDL_ZLIB_ROOT}
         -DZLIB_LIBRARY=${TRIDENT_CPPHDL_ZLIB_LIBRARY}
-        -DZLIB_INCLUDE_DIR=${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}
+        -DTRIDENT_ZLIB_LIBRARY=${TRIDENT_CPPHDL_ZLIB_LIBRARY}
     )
+    if(TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR)
+        file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}" TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR)
+        list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
+            -DZLIB_INCLUDE_DIR=${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}
+            -DTRIDENT_ZLIB_INCLUDE_DIR=${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}
+        )
+    endif()
     message(STATUS "CppHDL ZLIB_LIBRARY: ${TRIDENT_CPPHDL_ZLIB_LIBRARY}")
-    message(STATUS "CppHDL ZLIB_INCLUDE_DIR: ${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}")
+    if(TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR)
+        message(STATUS "CppHDL ZLIB_INCLUDE_DIR: ${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}")
+    endif()
 else()
     message(WARNING
-        "CppHDL did not find zlib library/include in local conda; "
+        "CppHDL did not find zlib library in local conda; "
         "LLVMConfig may fail if it requires ZLIB::ZLIB.")
 endif()
 
@@ -291,14 +299,17 @@ to_unix_path() {
         ?:/*)
             drive="$(printf '%s' "${path_value%%:*}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')"
             rest="${path_value#?:}"
-            printf '/%s%s\n' "$drive" "$rest"
+            printf '/%s%s
+' "$drive" "$rest"
             return 0
             ;;
     esac
     if command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$path_value" 2>/dev/null || printf '%s\n' "$path_value"
+        cygpath -u "$path_value" 2>/dev/null || printf '%s
+' "$path_value"
     else
-        printf '%s\n' "$path_value"
+        printf '%s
+' "$path_value"
     fi
 }
 
@@ -317,18 +328,28 @@ if [ ! -f "$cmake_file" ]; then
     exit 2
 fi
 
-if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_PATCH' "$cmake_file"; then
+if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_PATCH' "$cmake_file"; then
     echo "  already patched"
     exit 0
 fi
 
 tmp_file="$cmake_file.tmp.$$"
 awk '
-BEGIN { patched = 0 }
-$0 == "if(CPPHDL_LLVM_PREFIXES)" && patched == 0 {
+function print_explicit_block() {
     print "if(LLVM_DIR AND Clang_DIR)"
-    print "  # CPPHDL_EXPLICIT_LLVM_DIR_PATCH: conda packages may provide CMake configs"
+    print "  # CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_PATCH: conda packages may provide CMake configs"
     print "  # even when clang/Tooling headers are not under the probed prefix."
+    print "  if(NOT TARGET ZLIB::ZLIB)"
+    print "    if(TRIDENT_ZLIB_LIBRARY)"
+    print "      add_library(ZLIB::ZLIB UNKNOWN IMPORTED)"
+    print "      set_target_properties(ZLIB::ZLIB PROPERTIES IMPORTED_LOCATION \"${TRIDENT_ZLIB_LIBRARY}\")"
+    print "      if(TRIDENT_ZLIB_INCLUDE_DIR)"
+    print "        set_target_properties(ZLIB::ZLIB PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${TRIDENT_ZLIB_INCLUDE_DIR}\")"
+    print "      endif()"
+    print "    else()"
+    print "      add_library(ZLIB::ZLIB INTERFACE IMPORTED)"
+    print "    endif()"
+    print "  endif()"
     print "  message(STATUS \"CppHDL using explicit LLVM_DIR=${LLVM_DIR}\")"
     print "  message(STATUS \"CppHDL using explicit Clang_DIR=${Clang_DIR}\")"
     print "  find_package(LLVM REQUIRED CONFIG)"
@@ -336,7 +357,23 @@ $0 == "if(CPPHDL_LLVM_PREFIXES)" && patched == 0 {
     print "  include_directories(${LLVM_INCLUDE_DIRS})"
     print "  include_directories(${CLANG_INCLUDE_DIRS})"
     print "elseif(CPPHDL_LLVM_PREFIXES)"
+    print "  find_package(LLVM REQUIRED CONFIG PATHS ${CPPHDL_LLVM_PREFIXES} NO_DEFAULT_PATH)"
+    print "  find_package(Clang REQUIRED CONFIG PATHS ${CPPHDL_LLVM_PREFIXES} NO_DEFAULT_PATH)"
+    print "  include_directories(${LLVM_INCLUDE_DIRS})"
+    print "  include_directories(${CLANG_INCLUDE_DIRS})"
+}
+BEGIN { patched = 0; skipping = 0 }
+($0 == "if(CPPHDL_LLVM_PREFIXES)" || $0 == "if(LLVM_DIR AND Clang_DIR)") && patched == 0 {
+    print_explicit_block()
     patched = 1
+    skipping = 1
+    next
+}
+skipping == 1 {
+    if ($0 == "elseif(CPPHDL_FETCH_LLVM)") {
+        print
+        skipping = 0
+    }
     next
 }
 { print }
