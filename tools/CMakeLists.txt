@@ -328,7 +328,7 @@ if [ ! -f "$cmake_file" ]; then
     exit 2
 fi
 
-if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_PATCH' "$cmake_file"; then
+if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH' "$cmake_file"; then
     echo "  already patched"
     exit 0
 fi
@@ -337,7 +337,7 @@ tmp_file="$cmake_file.tmp.$$"
 awk '
 function print_explicit_block() {
     print "if(LLVM_DIR AND Clang_DIR)"
-    print "  # CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_PATCH: conda packages may provide CMake configs"
+    print "  # CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH: conda packages may provide CMake configs"
     print "  # even when clang/Tooling headers are not under the probed prefix."
     print "  if(NOT TARGET ZLIB::ZLIB)"
     print "    if(TRIDENT_ZLIB_LIBRARY)"
@@ -352,15 +352,31 @@ function print_explicit_block() {
     print "  endif()"
     print "  message(STATUS \"CppHDL using explicit LLVM_DIR=${LLVM_DIR}\")"
     print "  message(STATUS \"CppHDL using explicit Clang_DIR=${Clang_DIR}\")"
-    print "  find_package(LLVM REQUIRED CONFIG)"
-    print "  if(TARGET LLVMSupport)"
-    print "    get_target_property(_cpphdl_llvm_support_links LLVMSupport INTERFACE_LINK_LIBRARIES)"
-    print "    if(_cpphdl_llvm_support_links)"
-    print "      list(FILTER _cpphdl_llvm_support_links EXCLUDE REGEX \".*([Dd][Ii][Aa][ /\\\\]SDK|diaguids).*\")"
-    print "      set_target_properties(LLVMSupport PROPERTIES INTERFACE_LINK_LIBRARIES \"${_cpphdl_llvm_support_links}\")"
+    print "  function(cpphdl_strip_dia_from_target target_name)"
+    print "    if(NOT TARGET ${target_name})"
+    print "      return()"
     print "    endif()"
-    print "  endif()"
+    print "    foreach(prop INTERFACE_LINK_LIBRARIES IMPORTED_LINK_INTERFACE_LIBRARIES IMPORTED_LINK_DEPENDENT_LIBRARIES LINK_LIBRARIES)"
+    print "      get_target_property(_cpphdl_links ${target_name} ${prop})"
+    print "      if(_cpphdl_links)"
+    print "        list(FILTER _cpphdl_links EXCLUDE REGEX \".*([Dd][Ii][Aa].*SDK|diaguids).*\")"
+    print "        set_target_properties(${target_name} PROPERTIES ${prop} \"${_cpphdl_links}\")"
+    print "      endif()"
+    print "    endforeach()"
+    print "  endfunction()"
+    print "  function(cpphdl_strip_dia_from_imported_targets)"
+    print "    get_property(_cpphdl_imported_targets DIRECTORY PROPERTY IMPORTED_TARGETS)"
+    print "    foreach(target_name IN LISTS _cpphdl_imported_targets)"
+    print "      cpphdl_strip_dia_from_target(\"${target_name}\")"
+    print "    endforeach()"
+    print "    foreach(target_name LLVMSupport LLVM::Support LLVMCore LLVMOption LLVMDebugInfoPDB clangBasic clangTooling clangFrontend clangAST clangASTMatchers clangRewrite)"
+    print "      cpphdl_strip_dia_from_target(\"${target_name}\")"
+    print "    endforeach()"
+    print "  endfunction()"
+    print "  find_package(LLVM REQUIRED CONFIG)"
+    print "  cpphdl_strip_dia_from_imported_targets()"
     print "  find_package(Clang REQUIRED CONFIG)"
+    print "  cpphdl_strip_dia_from_imported_targets()"
     print "  include_directories(${LLVM_INCLUDE_DIRS})"
     print "  include_directories(${CLANG_INCLUDE_DIRS})"
     print "elseif(CPPHDL_LLVM_PREFIXES)"
