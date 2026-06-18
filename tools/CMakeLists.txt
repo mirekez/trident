@@ -383,6 +383,68 @@ if(WIN32)
     endif()
 endif()
 
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PatchScalePnrPngTarget.cmake" [=[if(NOT DEFINED SCALEPNR_SOURCE_DIR)
+    message(FATAL_ERROR "SCALEPNR_SOURCE_DIR is required")
+endif()
+
+file(TO_CMAKE_PATH "${SCALEPNR_SOURCE_DIR}" SCALEPNR_SOURCE_DIR)
+set(SCALEPNR_CMAKE_FILE "${SCALEPNR_SOURCE_DIR}/CMakeLists.txt")
+message(STATUS "Patching ScalePNR CMake: ${SCALEPNR_CMAKE_FILE}")
+
+if(NOT EXISTS "${SCALEPNR_CMAKE_FILE}")
+    message(FATAL_ERROR "Missing ${SCALEPNR_CMAKE_FILE}")
+endif()
+
+file(READ "${SCALEPNR_CMAKE_FILE}" SCALEPNR_CMAKE_TEXT)
+if(SCALEPNR_CMAKE_TEXT MATCHES "TRIDENT_PNG_TARGET_FALLBACK")
+    message(STATUS "ScalePNR PNG target fallback already patched")
+else()
+    set(SCALEPNR_NEW [==[find_package(PNG REQUIRED)
+# TRIDENT_PNG_TARGET_FALLBACK: CMake/Windows conda combinations may set
+# PNG_LIBRARY and PNG_PNG_INCLUDE_DIR without defining imported targets.
+if(NOT TARGET ZLIB::ZLIB AND ZLIB_LIBRARY)
+    add_library(ZLIB::ZLIB UNKNOWN IMPORTED)
+    set_target_properties(ZLIB::ZLIB PROPERTIES
+        IMPORTED_LOCATION "${ZLIB_LIBRARY}")
+    if(ZLIB_INCLUDE_DIR)
+        set_target_properties(ZLIB::ZLIB PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${ZLIB_INCLUDE_DIR}")
+    endif()
+endif()
+if(NOT TARGET PNG::PNG AND PNG_LIBRARY)
+    add_library(PNG::PNG UNKNOWN IMPORTED)
+    set_target_properties(PNG::PNG PROPERTIES
+        IMPORTED_LOCATION "${PNG_LIBRARY}")
+    if(PNG_PNG_INCLUDE_DIR)
+        set_target_properties(PNG::PNG PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${PNG_PNG_INCLUDE_DIR}")
+    endif()
+    if(TARGET ZLIB::ZLIB)
+        set_property(TARGET PNG::PNG APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)
+    elseif(ZLIB_LIBRARY)
+        set_property(TARGET PNG::PNG APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES "${ZLIB_LIBRARY}")
+    endif()
+endif()
+target_link_libraries(scalepnr PUBLIC PNG::PNG)]==])
+
+    string(REGEX REPLACE
+        "find_package\\([ \t]*PNG[ \t]+REQUIRED[ \t]*\\)[\r\n \t]*target_link_libraries\\([ \t]*scalepnr[ \t]+PUBLIC[ \t]+PNG::PNG[ \t]*\\)"
+        "${SCALEPNR_NEW}"
+        SCALEPNR_PATCHED_TEXT
+        "${SCALEPNR_CMAKE_TEXT}")
+
+    if(SCALEPNR_PATCHED_TEXT STREQUAL SCALEPNR_CMAKE_TEXT)
+        message(FATAL_ERROR "Could not locate ScalePNR PNG link block in ${SCALEPNR_CMAKE_FILE}")
+    endif()
+
+    file(WRITE "${SCALEPNR_CMAKE_FILE}" "${SCALEPNR_PATCHED_TEXT}")
+    message(STATUS "Patched ScalePNR PNG imported target fallback")
+endif()
+]=])
+
 set(TRIDENT_YOSYS_EXTRA_CMAKE_ARGS)
 set(TRIDENT_YOSYS_EXTRA_DEPENDS)
 if(WIN32)
@@ -453,7 +515,7 @@ function(trident_cmake_tool tool_name tool_url)
         set(tool_patch_command
             "${_TRIDENT_CMAKE}"
                 -DSCALEPNR_SOURCE_DIR=<SOURCE_DIR>
-                -P "${CMAKE_CURRENT_LIST_DIR}/PatchScalePnrPngTarget.cmake"
+                -P "${CMAKE_CURRENT_BINARY_DIR}/PatchScalePnrPngTarget.cmake"
         )
         set(tool_build_command
             ${TRIDENT_CMAKE_LAUNCHER}
