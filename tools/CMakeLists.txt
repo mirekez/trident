@@ -114,9 +114,14 @@ set(TRIDENT_TOOL_ENV
     "OBJCXXFLAGS="
 )
 
+set(TRIDENT_CMAKE_PREFIX_PATH "${TRIDENT_CONDA_PREFIX}")
+if(WIN32)
+    list(APPEND TRIDENT_CMAKE_PREFIX_PATH "${_TRIDENT_CONDA_ROOT}/Library")
+endif()
+
 set(TRIDENT_COMMON_CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_PREFIX_PATH=${TRIDENT_CONDA_PREFIX}
+    "-DCMAKE_PREFIX_PATH=${TRIDENT_CMAKE_PREFIX_PATH}"
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
     -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_LINKER=${CMAKE_LINKER}
@@ -320,6 +325,52 @@ function(trident_source_args out_var tool_name tool_url)
     endif()
 endfunction()
 
+set(TRIDENT_SCALEPNR_EXTRA_CMAKE_ARGS)
+if(WIN32)
+    foreach(_TRIDENT_SCALEPNR_PACKAGE_PREFIX
+        "${_TRIDENT_CONDA_ROOT}/Library"
+        "${_TRIDENT_CONDA_ROOT}"
+    )
+        if(NOT TRIDENT_SCALEPNR_PNG_INCLUDE_DIR)
+            find_path(TRIDENT_SCALEPNR_PNG_INCLUDE_DIR png.h
+                PATHS "${_TRIDENT_SCALEPNR_PACKAGE_PREFIX}/include"
+                NO_DEFAULT_PATH)
+        endif()
+        if(NOT TRIDENT_SCALEPNR_PNG_LIBRARY)
+            find_library(TRIDENT_SCALEPNR_PNG_LIBRARY
+                NAMES png libpng png16 libpng16
+                PATHS "${_TRIDENT_SCALEPNR_PACKAGE_PREFIX}/lib"
+                NO_DEFAULT_PATH)
+        endif()
+        if(NOT TRIDENT_SCALEPNR_ZLIB_INCLUDE_DIR)
+            find_path(TRIDENT_SCALEPNR_ZLIB_INCLUDE_DIR zlib.h
+                PATHS "${_TRIDENT_SCALEPNR_PACKAGE_PREFIX}/include"
+                NO_DEFAULT_PATH)
+        endif()
+        if(NOT TRIDENT_SCALEPNR_ZLIB_LIBRARY)
+            find_library(TRIDENT_SCALEPNR_ZLIB_LIBRARY
+                NAMES z zlib libz libzlib zlibstatic
+                PATHS "${_TRIDENT_SCALEPNR_PACKAGE_PREFIX}/lib"
+                NO_DEFAULT_PATH)
+        endif()
+    endforeach()
+
+    if(TRIDENT_SCALEPNR_PNG_INCLUDE_DIR AND TRIDENT_SCALEPNR_PNG_LIBRARY)
+        list(APPEND TRIDENT_SCALEPNR_EXTRA_CMAKE_ARGS
+            -DPNG_PNG_INCLUDE_DIR=${TRIDENT_SCALEPNR_PNG_INCLUDE_DIR}
+            -DPNG_LIBRARY=${TRIDENT_SCALEPNR_PNG_LIBRARY})
+        message(STATUS "ScalePNR PNG include: ${TRIDENT_SCALEPNR_PNG_INCLUDE_DIR}")
+        message(STATUS "ScalePNR PNG library: ${TRIDENT_SCALEPNR_PNG_LIBRARY}")
+    endif()
+    if(TRIDENT_SCALEPNR_ZLIB_INCLUDE_DIR AND TRIDENT_SCALEPNR_ZLIB_LIBRARY)
+        list(APPEND TRIDENT_SCALEPNR_EXTRA_CMAKE_ARGS
+            -DZLIB_INCLUDE_DIR=${TRIDENT_SCALEPNR_ZLIB_INCLUDE_DIR}
+            -DZLIB_LIBRARY=${TRIDENT_SCALEPNR_ZLIB_LIBRARY})
+        message(STATUS "ScalePNR ZLIB include: ${TRIDENT_SCALEPNR_ZLIB_INCLUDE_DIR}")
+        message(STATUS "ScalePNR ZLIB library: ${TRIDENT_SCALEPNR_ZLIB_LIBRARY}")
+    endif()
+endif()
+
 set(TRIDENT_YOSYS_EXTRA_CMAKE_ARGS)
 set(TRIDENT_YOSYS_EXTRA_DEPENDS)
 if(WIN32)
@@ -448,7 +499,9 @@ if(TRIDENT_BUILD_CPPHDL)
     ExternalProject_Add_StepDependencies(cpphdl configure cpphdl_slang)
 endif()
 
-trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git)
+trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git
+    ${TRIDENT_SCALEPNR_EXTRA_CMAKE_ARGS}
+)
 
 trident_tool_version(CMAKE_HOST_VERSION cmake)
 string(REGEX REPLACE "^v" "" CMAKE_HOST_VERSION_NUMBER "${CMAKE_HOST_VERSION}")
