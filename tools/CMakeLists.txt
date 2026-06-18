@@ -70,6 +70,17 @@ project(TridentTools LANGUAGES C CXX)
 
 include(ExternalProject)
 
+option(TRIDENT_BUILD_CPPHDL "Build cpphdl tool" ON)
+option(TRIDENT_CPPHDL_FETCH_LLVM "Allow cpphdl to download and build a matching LLVM/Clang" OFF)
+if(WIN32 AND TRIDENT_BUILD_CPPHDL AND NOT TRIDENT_CPPHDL_FETCH_LLVM)
+    message(WARNING
+        "Skipping cpphdl on Windows with MinGW because the local .conda LLVM/Clang "
+        "libraries are not link-compatible with this toolchain. Configure with "
+        "-DTRIDENT_CPPHDL_FETCH_LLVM=ON to let cpphdl build a matching LLVM/Clang, "
+        "or provide a MinGW-built LLVM/Clang package.")
+    set(TRIDENT_BUILD_CPPHDL OFF)
+endif()
+
 if(WIN32)
     set(_TRIDENT_CMAKE "${_TRIDENT_CONDA_BIN}/cmake.exe")
     if(EXISTS "${_TRIDENT_CONDA_BIN}/git.exe")
@@ -113,98 +124,42 @@ set(TRIDENT_COMMON_CMAKE_ARGS
 )
 
 set(TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
-    -DCMAKE_PREFIX_PATH=${TRIDENT_CPPHDL_LLVM_PREFIX}
-    -DCPPHDL_USE_LOCAL_CONDA=ON
-    -DCPPHDL_LOCAL_CONDA_PREFIX=${TRIDENT_CPPHDL_LLVM_PREFIX}
-    -DCPPHDL_FETCH_LLVM=OFF
     -DCPPHDL_BUILD_HDLCPP=ON
 )
-foreach(_TRIDENT_CPPHDL_PACKAGE_PREFIX
-    "${TRIDENT_CPPHDL_LLVM_PREFIX}"
-    "${_TRIDENT_CONDA_ROOT}/Library"
-    "${_TRIDENT_CONDA_ROOT}"
-)
-    if(NOT TRIDENT_CPPHDL_LLVM_DIR AND
-            EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/llvm/LLVMConfig.cmake")
-        set(TRIDENT_CPPHDL_LLVM_DIR "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/llvm")
-    endif()
-    if(NOT TRIDENT_CPPHDL_CLANG_DIR AND
-            EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/clang/ClangConfig.cmake")
-        set(TRIDENT_CPPHDL_CLANG_DIR "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/clang")
-    endif()
-    if(NOT TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR AND
-            EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/include/zlib.h")
-        set(TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/include")
-        set(TRIDENT_CPPHDL_ZLIB_ROOT "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}")
-    endif()
-    if(NOT TRIDENT_CPPHDL_ZLIB_LIBRARY)
-        foreach(_TRIDENT_CPPHDL_ZLIB_NAME zlib z zlibstatic libzlib libz)
-            foreach(_TRIDENT_CPPHDL_ZLIB_SUFFIX lib a dll.a)
-                if(EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/${_TRIDENT_CPPHDL_ZLIB_NAME}.${_TRIDENT_CPPHDL_ZLIB_SUFFIX}")
-                    set(TRIDENT_CPPHDL_ZLIB_LIBRARY
-                        "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/${_TRIDENT_CPPHDL_ZLIB_NAME}.${_TRIDENT_CPPHDL_ZLIB_SUFFIX}")
-                    break()
-                endif()
-            endforeach()
-            if(TRIDENT_CPPHDL_ZLIB_LIBRARY)
-                break()
-            endif()
-        endforeach()
-    endif()
-endforeach()
-if(TRIDENT_CPPHDL_LLVM_DIR)
-    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DLLVM_DIR=${TRIDENT_CPPHDL_LLVM_DIR})
-    get_filename_component(TRIDENT_CPPHDL_LLVM_CMAKE_PARENT "${TRIDENT_CPPHDL_LLVM_DIR}" DIRECTORY)
-    get_filename_component(TRIDENT_CPPHDL_LLVM_LIBRARY_DIR "${TRIDENT_CPPHDL_LLVM_CMAKE_PARENT}" DIRECTORY)
-    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_LLVM_LIBRARY_DIR}" TRIDENT_CPPHDL_LLVM_LIBRARY_DIR)
+if(TRIDENT_CPPHDL_FETCH_LLVM)
     list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
-        -DTRIDENT_LLVM_LIBRARY_DIR=${TRIDENT_CPPHDL_LLVM_LIBRARY_DIR}
+        -DCPPHDL_FETCH_LLVM=ON
+        -DCPPHDL_USE_LOCAL_CONDA=OFF
     )
-    message(STATUS "CppHDL LLVM_DIR: ${TRIDENT_CPPHDL_LLVM_DIR}")
-    message(STATUS "CppHDL LLVM library dir: ${TRIDENT_CPPHDL_LLVM_LIBRARY_DIR}")
-endif()
-if(TRIDENT_CPPHDL_CLANG_DIR)
-    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DClang_DIR=${TRIDENT_CPPHDL_CLANG_DIR})
-    message(STATUS "CppHDL Clang_DIR: ${TRIDENT_CPPHDL_CLANG_DIR}")
-endif()
-if(TRIDENT_CPPHDL_ZLIB_LIBRARY)
-    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_ZLIB_LIBRARY}" TRIDENT_CPPHDL_ZLIB_LIBRARY)
-    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_ZLIB_ROOT}" TRIDENT_CPPHDL_ZLIB_ROOT)
-    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
-        -DZLIB_ROOT=${TRIDENT_CPPHDL_ZLIB_ROOT}
-        -DZLIB_LIBRARY=${TRIDENT_CPPHDL_ZLIB_LIBRARY}
-        -DTRIDENT_ZLIB_LIBRARY=${TRIDENT_CPPHDL_ZLIB_LIBRARY}
-    )
-    if(TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR)
-        file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}" TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR)
-        list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
-            -DZLIB_INCLUDE_DIR=${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}
-            -DTRIDENT_ZLIB_INCLUDE_DIR=${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}
-        )
-    endif()
-    message(STATUS "CppHDL ZLIB_LIBRARY: ${TRIDENT_CPPHDL_ZLIB_LIBRARY}")
-    if(TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR)
-        message(STATUS "CppHDL ZLIB_INCLUDE_DIR: ${TRIDENT_CPPHDL_ZLIB_INCLUDE_DIR}")
-    endif()
 else()
-    message(WARNING
-        "CppHDL did not find zlib library in local conda; "
-        "LLVMConfig may fail if it requires ZLIB::ZLIB.")
-endif()
-
-file(GLOB TRIDENT_CPPHDL_STDCXXEXP_CANDIDATES
-    "${_TRIDENT_CONDA_ROOT}/Library/lib/gcc/*/*/libstdc++exp.a"
-    "${_TRIDENT_CONDA_ROOT}/Library/lib/gcc/*/*/libstdc++exp.lib"
-    "${_TRIDENT_CONDA_ROOT}/lib/gcc/*/*/libstdc++exp.a"
-    "${_TRIDENT_CONDA_ROOT}/lib/gcc/*/*/libstdc++exp.lib"
-)
-if(TRIDENT_CPPHDL_STDCXXEXP_CANDIDATES)
-    list(GET TRIDENT_CPPHDL_STDCXXEXP_CANDIDATES 0 TRIDENT_CPPHDL_STDCXXEXP)
-    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_STDCXXEXP}" TRIDENT_CPPHDL_STDCXXEXP)
     list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
-        -DCPPHDL_STDCXXEXP=${TRIDENT_CPPHDL_STDCXXEXP}
+        -DCMAKE_PREFIX_PATH=${TRIDENT_CPPHDL_LLVM_PREFIX}
+        -DCPPHDL_USE_LOCAL_CONDA=ON
+        -DCPPHDL_LOCAL_CONDA_PREFIX=${TRIDENT_CPPHDL_LLVM_PREFIX}
+        -DCPPHDL_FETCH_LLVM=OFF
     )
-    message(STATUS "CppHDL stdc++exp: ${TRIDENT_CPPHDL_STDCXXEXP}")
+    foreach(_TRIDENT_CPPHDL_PACKAGE_PREFIX
+        "${TRIDENT_CPPHDL_LLVM_PREFIX}"
+        "${_TRIDENT_CONDA_ROOT}/Library"
+        "${_TRIDENT_CONDA_ROOT}"
+    )
+        if(NOT TRIDENT_CPPHDL_LLVM_DIR AND
+                EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/llvm/LLVMConfig.cmake")
+            set(TRIDENT_CPPHDL_LLVM_DIR "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/llvm")
+        endif()
+        if(NOT TRIDENT_CPPHDL_CLANG_DIR AND
+                EXISTS "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/clang/ClangConfig.cmake")
+            set(TRIDENT_CPPHDL_CLANG_DIR "${_TRIDENT_CPPHDL_PACKAGE_PREFIX}/lib/cmake/clang")
+        endif()
+    endforeach()
+    if(TRIDENT_CPPHDL_LLVM_DIR)
+        list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DLLVM_DIR=${TRIDENT_CPPHDL_LLVM_DIR})
+        message(STATUS "CppHDL LLVM_DIR: ${TRIDENT_CPPHDL_LLVM_DIR}")
+    endif()
+    if(TRIDENT_CPPHDL_CLANG_DIR)
+        list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DClang_DIR=${TRIDENT_CPPHDL_CLANG_DIR})
+        message(STATUS "CppHDL Clang_DIR: ${TRIDENT_CPPHDL_CLANG_DIR}")
+    endif()
 endif()
 
 if(WIN32)
@@ -312,204 +267,8 @@ fi
 
 exec \"\$cmake_cmd_unix\" \"\$@\"
 ")
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/RunCpphdlPatch.sh" [=[#!/usr/bin/env sh
-set -eu
-
-to_unix_path() {
-    path_value="$1"
-    case "$path_value" in
-        ?:/*)
-            drive="$(printf '%s' "${path_value%%:*}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')"
-            rest="${path_value#?:}"
-            printf '/%s%s
-' "$drive" "$rest"
-            return 0
-            ;;
-    esac
-    if command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$path_value" 2>/dev/null || printf '%s
-' "$path_value"
-    else
-        printf '%s
-' "$path_value"
-    fi
-}
-
-source_dir="$(to_unix_path "${1:-}")"
-if [ -z "$source_dir" ]; then
-    echo "CPPHDL source directory argument is required" >&2
-    exit 2
-fi
-
-cmake_file="$source_dir/CMakeLists.txt"
-echo "Patching cpphdl explicit LLVM_DIR/Clang_DIR support"
-echo "  source: $source_dir"
-
-if [ ! -f "$cmake_file" ]; then
-    echo "Missing $cmake_file" >&2
-    exit 2
-fi
-
-if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH' "$cmake_file" && grep -q 'CPPHDL_EXPLICIT_CLANG_GLOB_LINK_PATCH' "$cmake_file"; then
-    echo "  already patched"
-    exit 0
-fi
-
-tmp_file="$cmake_file.tmp.$$"
-awk '
-function print_explicit_block() {
-    print "if(LLVM_DIR AND Clang_DIR)"
-    print "  # CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH: conda packages may provide CMake configs"
-    print "  # even when clang/Tooling headers are not under the probed prefix."
-    print "  if(NOT TARGET ZLIB::ZLIB)"
-    print "    if(TRIDENT_ZLIB_LIBRARY)"
-    print "      add_library(ZLIB::ZLIB UNKNOWN IMPORTED)"
-    print "      set_target_properties(ZLIB::ZLIB PROPERTIES IMPORTED_LOCATION \"${TRIDENT_ZLIB_LIBRARY}\")"
-    print "      if(TRIDENT_ZLIB_INCLUDE_DIR)"
-    print "        set_target_properties(ZLIB::ZLIB PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${TRIDENT_ZLIB_INCLUDE_DIR}\")"
-    print "      endif()"
-    print "    else()"
-    print "      add_library(ZLIB::ZLIB INTERFACE IMPORTED)"
-    print "    endif()"
-    print "  endif()"
-    print "  message(STATUS \"CppHDL using explicit LLVM_DIR=${LLVM_DIR}\")"
-    print "  message(STATUS \"CppHDL using explicit Clang_DIR=${Clang_DIR}\")"
-    print "  function(cpphdl_strip_dia_from_target target_name)"
-    print "    if(NOT TARGET ${target_name})"
-    print "      return()"
-    print "    endif()"
-    print "    foreach(prop INTERFACE_LINK_LIBRARIES IMPORTED_LINK_INTERFACE_LIBRARIES IMPORTED_LINK_DEPENDENT_LIBRARIES LINK_LIBRARIES)"
-    print "      get_target_property(_cpphdl_links ${target_name} ${prop})"
-    print "      if(_cpphdl_links)"
-    print "        list(FILTER _cpphdl_links EXCLUDE REGEX \".*([Dd][Ii][Aa].*SDK|diaguids).*\")"
-    print "        set_target_properties(${target_name} PROPERTIES ${prop} \"${_cpphdl_links}\")"
-    print "      endif()"
-    print "    endforeach()"
-    print "  endfunction()"
-    print "  function(cpphdl_strip_dia_from_imported_targets)"
-    print "    get_property(_cpphdl_imported_targets DIRECTORY PROPERTY IMPORTED_TARGETS)"
-    print "    foreach(target_name IN LISTS _cpphdl_imported_targets)"
-    print "      cpphdl_strip_dia_from_target(\"${target_name}\")"
-    print "    endforeach()"
-    print "    foreach(target_name LLVMSupport LLVM::Support LLVMCore LLVMOption LLVMDebugInfoPDB clangBasic clangTooling clangFrontend clangAST clangASTMatchers clangRewrite)"
-    print "      cpphdl_strip_dia_from_target(\"${target_name}\")"
-    print "    endforeach()"
-    print "  endfunction()"
-    print "  find_package(LLVM REQUIRED CONFIG)"
-    print "  cpphdl_strip_dia_from_imported_targets()"
-    print "  find_package(Clang REQUIRED CONFIG)"
-    print "  cpphdl_strip_dia_from_imported_targets()"
-    print "  include_directories(${LLVM_INCLUDE_DIRS})"
-    print "  include_directories(${CLANG_INCLUDE_DIRS})"
-    print "elseif(CPPHDL_LLVM_PREFIXES)"
-    print "  find_package(LLVM REQUIRED CONFIG PATHS ${CPPHDL_LLVM_PREFIXES} NO_DEFAULT_PATH)"
-    print "  find_package(Clang REQUIRED CONFIG PATHS ${CPPHDL_LLVM_PREFIXES} NO_DEFAULT_PATH)"
-    print "  include_directories(${LLVM_INCLUDE_DIRS})"
-    print "  include_directories(${CLANG_INCLUDE_DIRS})"
-}
-BEGIN { patched = 0; skipping = 0; link_patched = 0 }
-($0 == "if(CPPHDL_LLVM_PREFIXES)" || $0 == "if(LLVM_DIR AND Clang_DIR)") && patched == 0 {
-    print_explicit_block()
-    patched = 1
-    skipping = 1
-    next
-}
-skipping == 1 {
-    if ($0 == "elseif(CPPHDL_FETCH_LLVM)") {
-        print
-        skipping = 0
-    }
-    next
-}
-$0 == "foreach(dependency" && link_patched == 0 {
-    print "# CPPHDL_EXPLICIT_CLANG_GLOB_LINK_PATCH: static Windows conda Clang needs explicit libs."
-    print "set(CPPHDL_TRIDENT_CLANG_LIBS"
-    print "  clangTooling"
-    print "  clangToolingCore"
-    print "  clangFrontendTool"
-    print "  clangFrontend"
-    print "  clangDriver"
-    print "  clangSerialization"
-    print "  clangParse"
-    print "  clangSema"
-    print "  clangAnalysis"
-    print "  clangASTMatchers"
-    print "  clangAST"
-    print "  clangRewrite"
-    print "  clangRewriteFrontend"
-    print "  clangEdit"
-    print "  clangLex"
-    print "  clangBasic"
-    print ")"
-    print "set(CPPHDL_TRIDENT_FILE_LIBS)"
-    print "if(TRIDENT_LLVM_LIBRARY_DIR)"
-    print "  file(GLOB CPPHDL_TRIDENT_MONOLITHIC_LIBS CONFIGURE_DEPENDS"
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang-cpp*.dll.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang-cpp*.dll.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang-cpp*.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang-cpp*.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang-cpp*.lib\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang-cpp*.lib\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libLLVM*.dll.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/LLVM*.dll.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libLLVM*.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/LLVM*.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libLLVM*.lib\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/LLVM*.lib\")"
-    print "  file(GLOB CPPHDL_TRIDENT_SPLIT_CLANG_LIBS CONFIGURE_DEPENDS"
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang*.dll.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang*.dll.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang*.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang*.a\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang*.lib\""
-    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang*.lib\")"
-    print "  list(APPEND CPPHDL_TRIDENT_FILE_LIBS ${CPPHDL_TRIDENT_MONOLITHIC_LIBS} ${CPPHDL_TRIDENT_SPLIT_CLANG_LIBS})"
-    print "  list(REMOVE_DUPLICATES CPPHDL_TRIDENT_FILE_LIBS)"
-    print "endif()"
-    print "if(CPPHDL_TRIDENT_FILE_LIBS)"
-    print "  message(STATUS \"CppHDL explicit Clang/LLVM file libs: ${CPPHDL_TRIDENT_FILE_LIBS}\")"
-    print "  if(CMAKE_CXX_COMPILER_ID MATCHES \"GNU|Clang\")"
-    print "    target_link_libraries(cpphdl PRIVATE -Wl,--start-group ${CPPHDL_TRIDENT_FILE_LIBS} -Wl,--end-group)"
-    print "  else()"
-    print "    target_link_libraries(cpphdl PRIVATE ${CPPHDL_TRIDENT_FILE_LIBS})"
-    print "  endif()"
-    print "else()"
-    print "  message(STATUS \"CppHDL explicit Clang/LLVM file libs: none in ${TRIDENT_LLVM_LIBRARY_DIR}\")"
-    print "  foreach(_cpphdl_clang_lib IN LISTS CPPHDL_TRIDENT_CLANG_LIBS)"
-    print "    if(TARGET ${_cpphdl_clang_lib})"
-    print "      target_link_libraries(cpphdl PRIVATE ${_cpphdl_clang_lib})"
-    print "    endif()"
-    print "  endforeach()"
-    print "  if(COMMAND llvm_map_components_to_libnames)"
-    print "    llvm_map_components_to_libnames(CPPHDL_TRIDENT_LLVM_LIBS support option core)"
-    print "    target_link_libraries(cpphdl PRIVATE ${CPPHDL_TRIDENT_LLVM_LIBS})"
-    print "  elseif(TARGET LLVM)"
-    print "    target_link_libraries(cpphdl PRIVATE LLVM)"
-    print "  elseif(LLVM_LIBRARIES)"
-    print "    target_link_libraries(cpphdl PRIVATE ${LLVM_LIBRARIES})"
-    print "  endif()"
-    print "endif()"
-    link_patched = 1
-}
-{ print }
-END {
-    if (patched == 0) {
-        print "Could not locate LLVM find_package block" > "/dev/stderr"
-        exit 2
-    }
-    if (link_patched == 0) {
-        print "Could not locate cpphdl dependency block" > "/dev/stderr"
-        exit 2
-    }
-}
-' "$cmake_file" > "$tmp_file"
-mv "$tmp_file" "$cmake_file"
-echo "  patched CMakeLists.txt"
-]=])
-    set(TRIDENT_CPPHDL_PATCH_COMMAND sh "${CMAKE_CURRENT_BINARY_DIR}/RunCpphdlPatch.sh" <SOURCE_DIR>)
     set(TRIDENT_CMAKE_LAUNCHER sh "${CMAKE_CURRENT_BINARY_DIR}/RunCMakeCommand.sh")
 else()
-    set(TRIDENT_CPPHDL_PATCH_COMMAND sh "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlUseExplicitLlvm.sh" <SOURCE_DIR>)
     set(TRIDENT_CMAKE_LAUNCHER "${_TRIDENT_CMAKE}" -E env ${TRIDENT_TOOL_ENV})
 endif()
 
@@ -618,9 +377,6 @@ function(trident_cmake_tool tool_name tool_url)
     trident_source_args(source_args "${tool_name}" "${tool_url}")
     set(tool_patch_command "")
     if(tool_name STREQUAL "cpphdl")
-        set(tool_patch_command
-            ${TRIDENT_CPPHDL_PATCH_COMMAND}
-        )
         set(tool_build_command
             ${TRIDENT_CMAKE_LAUNCHER}
             "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
@@ -671,24 +427,26 @@ function(trident_cmake_tool tool_name tool_url)
     )
 endfunction()
 
-trident_tool_version(CPPHDL_SLANG_VERSION slang)
-ExternalProject_Add(cpphdl_slang
-    GIT_REPOSITORY https://github.com/MikePopoloski/slang.git
-    GIT_TAG "${CPPHDL_SLANG_VERSION}"
-    GIT_PROGRESS TRUE
-    EXCLUDE_FROM_ALL TRUE
-    SOURCE_DIR "${TOOLS_SOURCE_DIR}/cpphdl/hdlcpp/slang"
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    INSTALL_COMMAND ""
-    STEP_TARGETS download
-    USES_TERMINAL_DOWNLOAD TRUE
-)
+if(TRIDENT_BUILD_CPPHDL)
+    trident_tool_version(CPPHDL_SLANG_VERSION slang)
+    ExternalProject_Add(cpphdl_slang
+        GIT_REPOSITORY https://github.com/MikePopoloski/slang.git
+        GIT_TAG "${CPPHDL_SLANG_VERSION}"
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL TRUE
+        SOURCE_DIR "${TOOLS_SOURCE_DIR}/cpphdl/hdlcpp/slang"
+        CONFIGURE_COMMAND ""
+        BUILD_COMMAND ""
+        INSTALL_COMMAND ""
+        STEP_TARGETS download
+        USES_TERMINAL_DOWNLOAD TRUE
+    )
 
-trident_cmake_tool(cpphdl https://github.com/mirekez/cpphdl.git
-    ${TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS}
-)
-ExternalProject_Add_StepDependencies(cpphdl configure cpphdl_slang)
+    trident_cmake_tool(cpphdl https://github.com/mirekez/cpphdl.git
+        ${TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS}
+    )
+    ExternalProject_Add_StepDependencies(cpphdl configure cpphdl_slang)
+endif()
 
 trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git)
 
@@ -861,4 +619,8 @@ ExternalProject_Add(yosys_slang
     USES_TERMINAL_BUILD TRUE
 )
 
-add_custom_target(trident_tools ALL DEPENDS cpphdl scalepnr yosys yosys_slang)
+set(TRIDENT_TOOLS_ALL_TARGETS scalepnr yosys yosys_slang)
+if(TRIDENT_BUILD_CPPHDL)
+    list(PREPEND TRIDENT_TOOLS_ALL_TARGETS cpphdl)
+endif()
+add_custom_target(trident_tools ALL DEPENDS ${TRIDENT_TOOLS_ALL_TARGETS})
