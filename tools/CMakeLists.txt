@@ -154,7 +154,14 @@ foreach(_TRIDENT_CPPHDL_PACKAGE_PREFIX
 endforeach()
 if(TRIDENT_CPPHDL_LLVM_DIR)
     list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DLLVM_DIR=${TRIDENT_CPPHDL_LLVM_DIR})
+    get_filename_component(TRIDENT_CPPHDL_LLVM_CMAKE_PARENT "${TRIDENT_CPPHDL_LLVM_DIR}" DIRECTORY)
+    get_filename_component(TRIDENT_CPPHDL_LLVM_LIBRARY_DIR "${TRIDENT_CPPHDL_LLVM_CMAKE_PARENT}" DIRECTORY)
+    file(TO_CMAKE_PATH "${TRIDENT_CPPHDL_LLVM_LIBRARY_DIR}" TRIDENT_CPPHDL_LLVM_LIBRARY_DIR)
+    list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS
+        -DTRIDENT_LLVM_LIBRARY_DIR=${TRIDENT_CPPHDL_LLVM_LIBRARY_DIR}
+    )
     message(STATUS "CppHDL LLVM_DIR: ${TRIDENT_CPPHDL_LLVM_DIR}")
+    message(STATUS "CppHDL LLVM library dir: ${TRIDENT_CPPHDL_LLVM_LIBRARY_DIR}")
 endif()
 if(TRIDENT_CPPHDL_CLANG_DIR)
     list(APPEND TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS -DClang_DIR=${TRIDENT_CPPHDL_CLANG_DIR})
@@ -434,18 +441,36 @@ $0 == "foreach(dependency" && link_patched == 0 {
     print "  clangLex"
     print "  clangBasic"
     print ")"
-    print "foreach(_cpphdl_clang_lib IN LISTS CPPHDL_TRIDENT_CLANG_LIBS)"
-    print "  if(TARGET ${_cpphdl_clang_lib})"
-    print "    target_link_libraries(cpphdl PRIVATE ${_cpphdl_clang_lib})"
+    print "set(CPPHDL_TRIDENT_FILE_LIBS)"
+    print "if(TRIDENT_LLVM_LIBRARY_DIR)"
+    print "  foreach(_cpphdl_name clang-cpp LLVM libclang-cpp libLLVM)"
+    print "    foreach(_cpphdl_suffix lib a dll.a)"
+    print "      if(EXISTS \"${TRIDENT_LLVM_LIBRARY_DIR}/${_cpphdl_name}.${_cpphdl_suffix}\")"
+    print "        list(APPEND CPPHDL_TRIDENT_FILE_LIBS \"${TRIDENT_LLVM_LIBRARY_DIR}/${_cpphdl_name}.${_cpphdl_suffix}\")"
+    print "      endif()"
+    print "    endforeach()"
+    print "  endforeach()"
+    print "endif()"
+    print "if(CPPHDL_TRIDENT_FILE_LIBS)"
+    print "  if(CMAKE_CXX_COMPILER_ID MATCHES \"GNU|Clang\")"
+    print "    target_link_libraries(cpphdl PRIVATE -Wl,--start-group ${CPPHDL_TRIDENT_FILE_LIBS} -Wl,--end-group)"
+    print "  else()"
+    print "    target_link_libraries(cpphdl PRIVATE ${CPPHDL_TRIDENT_FILE_LIBS})"
     print "  endif()"
-    print "endforeach()"
-    print "if(COMMAND llvm_map_components_to_libnames)"
-    print "  llvm_map_components_to_libnames(CPPHDL_TRIDENT_LLVM_LIBS support option core)"
-    print "  target_link_libraries(cpphdl PRIVATE ${CPPHDL_TRIDENT_LLVM_LIBS})"
-    print "elseif(TARGET LLVM)"
-    print "  target_link_libraries(cpphdl PRIVATE LLVM)"
-    print "elseif(LLVM_LIBRARIES)"
-    print "  target_link_libraries(cpphdl PRIVATE ${LLVM_LIBRARIES})"
+    print "else()"
+    print "  foreach(_cpphdl_clang_lib IN LISTS CPPHDL_TRIDENT_CLANG_LIBS)"
+    print "    if(TARGET ${_cpphdl_clang_lib})"
+    print "      target_link_libraries(cpphdl PRIVATE ${_cpphdl_clang_lib})"
+    print "    endif()"
+    print "  endforeach()"
+    print "  if(COMMAND llvm_map_components_to_libnames)"
+    print "    llvm_map_components_to_libnames(CPPHDL_TRIDENT_LLVM_LIBS support option core)"
+    print "    target_link_libraries(cpphdl PRIVATE ${CPPHDL_TRIDENT_LLVM_LIBS})"
+    print "  elseif(TARGET LLVM)"
+    print "    target_link_libraries(cpphdl PRIVATE LLVM)"
+    print "  elseif(LLVM_LIBRARIES)"
+    print "    target_link_libraries(cpphdl PRIVATE ${LLVM_LIBRARIES})"
+    print "  endif()"
     print "endif()"
     link_patched = 1
 }
