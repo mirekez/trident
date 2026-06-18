@@ -350,7 +350,7 @@ if [ ! -f "$cmake_file" ]; then
     exit 2
 fi
 
-if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH' "$cmake_file" && grep -q 'CPPHDL_EXPLICIT_CLANG_LINK_PATCH' "$cmake_file"; then
+if grep -q 'CPPHDL_EXPLICIT_LLVM_DIR_ZLIB_DIA_ALL_PATCH' "$cmake_file" && grep -q 'CPPHDL_EXPLICIT_CLANG_GLOB_LINK_PATCH' "$cmake_file"; then
     echo "  already patched"
     exit 0
 fi
@@ -422,7 +422,7 @@ skipping == 1 {
     next
 }
 $0 == "foreach(dependency" && link_patched == 0 {
-    print "# CPPHDL_EXPLICIT_CLANG_LINK_PATCH: static Windows conda Clang needs explicit libs."
+    print "# CPPHDL_EXPLICIT_CLANG_GLOB_LINK_PATCH: static Windows conda Clang needs explicit libs."
     print "set(CPPHDL_TRIDENT_CLANG_LIBS"
     print "  clangTooling"
     print "  clangToolingCore"
@@ -443,21 +443,38 @@ $0 == "foreach(dependency" && link_patched == 0 {
     print ")"
     print "set(CPPHDL_TRIDENT_FILE_LIBS)"
     print "if(TRIDENT_LLVM_LIBRARY_DIR)"
-    print "  foreach(_cpphdl_name clang-cpp LLVM libclang-cpp libLLVM)"
-    print "    foreach(_cpphdl_suffix lib a dll.a)"
-    print "      if(EXISTS \"${TRIDENT_LLVM_LIBRARY_DIR}/${_cpphdl_name}.${_cpphdl_suffix}\")"
-    print "        list(APPEND CPPHDL_TRIDENT_FILE_LIBS \"${TRIDENT_LLVM_LIBRARY_DIR}/${_cpphdl_name}.${_cpphdl_suffix}\")"
-    print "      endif()"
-    print "    endforeach()"
-    print "  endforeach()"
+    print "  file(GLOB CPPHDL_TRIDENT_MONOLITHIC_LIBS CONFIGURE_DEPENDS"
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang-cpp*.dll.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang-cpp*.dll.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang-cpp*.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang-cpp*.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang-cpp*.lib\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang-cpp*.lib\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libLLVM*.dll.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/LLVM*.dll.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libLLVM*.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/LLVM*.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libLLVM*.lib\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/LLVM*.lib\")"
+    print "  file(GLOB CPPHDL_TRIDENT_SPLIT_CLANG_LIBS CONFIGURE_DEPENDS"
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang*.dll.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang*.dll.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang*.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang*.a\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/libclang*.lib\""
+    print "    \"${TRIDENT_LLVM_LIBRARY_DIR}/clang*.lib\")"
+    print "  list(APPEND CPPHDL_TRIDENT_FILE_LIBS ${CPPHDL_TRIDENT_MONOLITHIC_LIBS} ${CPPHDL_TRIDENT_SPLIT_CLANG_LIBS})"
+    print "  list(REMOVE_DUPLICATES CPPHDL_TRIDENT_FILE_LIBS)"
     print "endif()"
     print "if(CPPHDL_TRIDENT_FILE_LIBS)"
+    print "  message(STATUS \"CppHDL explicit Clang/LLVM file libs: ${CPPHDL_TRIDENT_FILE_LIBS}\")"
     print "  if(CMAKE_CXX_COMPILER_ID MATCHES \"GNU|Clang\")"
     print "    target_link_libraries(cpphdl PRIVATE -Wl,--start-group ${CPPHDL_TRIDENT_FILE_LIBS} -Wl,--end-group)"
     print "  else()"
     print "    target_link_libraries(cpphdl PRIVATE ${CPPHDL_TRIDENT_FILE_LIBS})"
     print "  endif()"
     print "else()"
+    print "  message(STATUS \"CppHDL explicit Clang/LLVM file libs: none in ${TRIDENT_LLVM_LIBRARY_DIR}\")"
     print "  foreach(_cpphdl_clang_lib IN LISTS CPPHDL_TRIDENT_CLANG_LIBS)"
     print "    if(TARGET ${_cpphdl_clang_lib})"
     print "      target_link_libraries(cpphdl PRIVATE ${_cpphdl_clang_lib})"
