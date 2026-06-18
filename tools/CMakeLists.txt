@@ -114,14 +114,15 @@ set(TRIDENT_TOOL_ENV
     "OBJCXXFLAGS="
 )
 
-set(TRIDENT_CMAKE_PREFIX_PATH "${TRIDENT_CONDA_PREFIX}")
 if(WIN32)
-    list(APPEND TRIDENT_CMAKE_PREFIX_PATH "${_TRIDENT_CONDA_ROOT}/Library")
+    set(TRIDENT_CMAKE_PREFIX_PATH_ARG "${TRIDENT_CONDA_PREFIX}\;${_TRIDENT_CONDA_ROOT}/Library")
+else()
+    set(TRIDENT_CMAKE_PREFIX_PATH_ARG "${TRIDENT_CONDA_PREFIX}")
 endif()
 
 set(TRIDENT_COMMON_CMAKE_ARGS
     -DCMAKE_BUILD_TYPE=Release
-    "-DCMAKE_PREFIX_PATH=${TRIDENT_CMAKE_PREFIX_PATH}"
+    "-DCMAKE_PREFIX_PATH=${TRIDENT_CMAKE_PREFIX_PATH_ARG}"
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
     -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_LINKER=${CMAKE_LINKER}
@@ -349,9 +350,20 @@ if(WIN32)
         endif()
         if(NOT TRIDENT_SCALEPNR_ZLIB_LIBRARY)
             find_library(TRIDENT_SCALEPNR_ZLIB_LIBRARY
-                NAMES z zlib libz libzlib zlibstatic
+                NAMES z zlib zlib1 zlibstatic zlibstaticd zlibd libz libzlib libzlibstatic
                 PATHS "${_TRIDENT_SCALEPNR_PACKAGE_PREFIX}/lib"
                 NO_DEFAULT_PATH)
+            if(NOT TRIDENT_SCALEPNR_ZLIB_LIBRARY)
+                foreach(_TRIDENT_SCALEPNR_ZLIB_FILE
+                    zlib.lib z.lib libz.lib libzlib.lib zlibstatic.lib zlib1.lib
+                    zlib.dll.a libz.dll.a libzlib.dll.a libz.a zlib.a)
+                    if(EXISTS "${_TRIDENT_SCALEPNR_PACKAGE_PREFIX}/lib/${_TRIDENT_SCALEPNR_ZLIB_FILE}")
+                        set(TRIDENT_SCALEPNR_ZLIB_LIBRARY
+                            "${_TRIDENT_SCALEPNR_PACKAGE_PREFIX}/lib/${_TRIDENT_SCALEPNR_ZLIB_FILE}")
+                        break()
+                    endif()
+                endforeach()
+            endif()
         endif()
     endforeach()
 
@@ -436,6 +448,16 @@ function(trident_cmake_tool tool_name tool_url)
             COMMAND "${_TRIDENT_CMAKE}" -E copy_directory
                 "${TOOLS_SOURCE_DIR}/cpphdl/include"
                 "${CMAKE_BINARY_DIR}/cpphdl/include"
+        )
+    elseif(tool_name STREQUAL "scalepnr")
+        set(tool_patch_command
+            "${_TRIDENT_CMAKE}"
+                -DSCALEPNR_SOURCE_DIR=<SOURCE_DIR>
+                -P "${CMAKE_CURRENT_LIST_DIR}/PatchScalePnrPngTarget.cmake"
+        )
+        set(tool_build_command
+            ${TRIDENT_CMAKE_LAUNCHER}
+            "${_TRIDENT_CMAKE}" --build <BINARY_DIR>
         )
     elseif(tool_name STREQUAL "slang")
         set(tool_build_command
