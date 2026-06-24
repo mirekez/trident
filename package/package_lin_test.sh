@@ -8,6 +8,7 @@ PRODUCT_NAME="${PRODUCT_NAME:-trident}"
 ARCHIVE="${1:-}"
 WORK_DIR=""
 BACKEND_PID=""
+BACKEND_PORT=""
 
 fail() {
     echo "FAIL: $*" >&2
@@ -15,10 +16,7 @@ fail() {
 }
 
 cleanup() {
-    if [ -n "$BACKEND_PID" ]; then
-        kill "$BACKEND_PID" >/dev/null 2>&1 || true
-        wait "$BACKEND_PID" >/dev/null 2>&1 || true
-    fi
+    stop_backend >/dev/null 2>&1 || true
     if [ "${KEEP_UNPACKED:-0}" != "1" ] && [ -n "$WORK_DIR" ]; then
         rm -rf "$WORK_DIR"
     elif [ -n "$WORK_DIR" ]; then
@@ -95,6 +93,59 @@ find_free_port() {
         fi
     done
     fail "Could not find a free localhost port"
+}
+
+stop_backend() {
+    if [ -n "$BACKEND_PID" ]; then
+        kill "$BACKEND_PID" >/dev/null 2>&1 || true
+        wait "$BACKEND_PID" >/dev/null 2>&1 || true
+        BACKEND_PID=""
+        BACKEND_PORT=""
+    fi
+}
+
+start_backend() {
+    local name="$1"
+    shift
+    stop_backend
+    BACKEND_PORT="$(find_free_port)"
+    (
+        cd "$UNPACK_DIR"
+        ./trident_backend "$@" "$BACKEND_PORT"
+    ) >"$WORK_DIR/$name.log" 2>&1 &
+    BACKEND_PID="$!"
+    for _ in $(seq 1 100); do
+        if curl -fsS "http://127.0.0.1:$BACKEND_PORT/" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    sed -n '1,160p' "$WORK_DIR/$name.log" >&2
+    fail "backend did not answer on port $BACKEND_PORT"
+}
+
+rpc_post() {
+    local name="$1"
+    local endpoint="$2"
+    local body="${3:-{}}"
+    local log="$WORK_DIR/$name.json"
+    echo "[RPC] $endpoint"
+    if ! curl -fsS \
+        -H 'Content-Type: application/json' \
+        -d "$body" \
+        "http://127.0.0.1:$BACKEND_PORT$endpoint" >"$log"; then
+        cat "$log" >&2 2>/dev/null || true
+        fail "RPC failed: $endpoint"
+    fi
+}
+
+require_rpc_exit_zero() {
+    local name="$1"
+    local log="$WORK_DIR/$name.json"
+    if ! grep -q '"exitCode":0' "$log"; then
+        cat "$log" >&2
+        fail "RPC action did not return exitCode 0: $name"
+    fi
 }
 
 if [ -z "$ARCHIVE" ]; then
@@ -265,6 +316,26 @@ if [ -n "$SLANG_BIN" ]; then
     fi
 else
     echo "[INFO] No standalone slang executable in package; yosys-slang plugin was tested."
+fi
+
+echo "[CHECK] MemoryPrj RPC build flow"
+SAMPLE_PROJECT_SRC="$PACKAGE_DIR/MemoryPrj"
+require_file "$SAMPLE_PROJECT_SRC/MemoryPrj.trident"
+TEST_PROJECT="$WORK_DIR/MemoryPrj"
+cp -a "$SAMPLE_PROJECT_SRC" "$TEST_PROJECT"
+
+if [ "${SKIP_BACKEND_HTTP:-0}" = "1" ]; then
+    echo "[SKIP] MemoryPrj RPC build flow"
+else
+    start_backend memoryprj_backend
+    rpc_post memoryprj_load /rpc/load-project "{\"path\":\"$TEST_PROJECT/MemoryPrj.trident\"}"
+    rpc_post memoryprj_run /rpc/run '{}'
+    require_rpc_exit_zero memoryprj_run
+    rpc_post memoryprj_compile /rpc/compile '{}'
+    require_rpc_exit_zero memoryprj_compile
+    rpc_post memoryprj_synthesize /rpc/synthesize '{}'
+    require_rpc_exit_zero memoryprj_synthesize
+    stop_backend
 fi
 
 echo "Package smoke test passed."
