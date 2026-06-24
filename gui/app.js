@@ -4,6 +4,7 @@ import { OpenFile } from './OpenFile.js';
 import { ProjectOptions } from './ProjectOptions.js';
 import { Filesystem } from './Filesysten.js';
 import { FileSelect } from './FileSelect.js';
+import { ClassGenerator } from './ClassGenerator.js';
 
 const desktop = document.querySelector('#desktop');
 const launchButtons = document.querySelector('#launch-buttons');
@@ -49,6 +50,14 @@ const rpcConfig = {
     endpoint: '/rpc/list-filesystem',
     windowClass: 'filesystem-window',
     render: renderFilesystem
+  },
+  classGenerator: {
+    title: 'Class Generator',
+    buttonLabel: 'Class Generator',
+    icon: classGeneratorIcon(),
+    endpoint: '/rpc/class-generator-defaults',
+    windowClass: 'class-generator-window',
+    render: renderClassGenerator
   },
   development: {
     title: 'Development',
@@ -297,6 +306,26 @@ function renderFilesystem(payload) {
     }
   });
   return filesystem.element();
+}
+
+function renderClassGenerator(payload) {
+  const generator = new ClassGenerator({
+    payload,
+    fetchJson: callRpc,
+    onStatus: (message) => {
+      connection.textContent = message;
+    },
+    onGenerated: (filePayload) => {
+      if (activeDevelopment) {
+        activeDevelopment.openFilePayload(filePayload);
+        const developmentWindow = openMainWindows.get('development');
+        if (developmentWindow?.isConnected) {
+          bringWindowToFront(developmentWindow);
+        }
+      }
+    }
+  });
+  return generator.element();
 }
 
 function installPushHandlers() {
@@ -945,6 +974,17 @@ function filesystemIcon() {
       <path d="M8 9h8"/>
       <path d="M8 12h8"/>
       <path d="M8 15h5"/>
+    </svg>`;
+}
+
+function classGeneratorIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 4h14v16H5V4z"/>
+      <path d="M8 8h8"/>
+      <path d="M8 12h5"/>
+      <path d="M8 16h8"/>
+      <path d="M16 11l2 2-2 2"/>
     </svg>`;
 }
 

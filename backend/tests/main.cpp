@@ -6,6 +6,7 @@
 #include "RPCRefreshDevLogTest.h"
 #include "RPCExecBashCommandTest.h"
 #include "RPCRunBashCommandTest.h"
+#include "RPCGenerateClassTest.h"
 
 #include <iostream>
 
@@ -19,6 +20,7 @@ int main() {
     ok = RPCRefreshDevLogTest::validate() && ok;
     ok = RPCExecBashCommandTest::validate() && ok;
     ok = RPCRunBashCommandTest::validate() && ok;
+    ok = RPCGenerateClassTest::validate() && ok;
 
     if (!ok) {
         std::cerr << "One or more RPC test payloads failed validation.\n";

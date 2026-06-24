@@ -13,6 +13,7 @@
 #include "RPCPictureTest.h"
 #include "RPCRefreshDevLog.h"
 #include "RPCRefreshDevLogTest.h"
+#include "RPCGenerateClass.h"
 #include "RPCRunBashCommand.h"
 #include "RPCStatusTest.h"
 
@@ -957,6 +958,8 @@ std::string Server::dispatch(const HttpRequest& request) {
         request.path == "/rpc/list-project-files" ||
         request.path == "/rpc/open-file" ||
         request.path == "/rpc/create-file" ||
+        request.path == "/rpc/class-generator-defaults" ||
+        request.path == "/rpc/generate-class" ||
         request.path == "/rpc/close-file" ||
         request.path == "/rpc/save-file") {
         return handleProjectRpc(request);
@@ -1150,6 +1153,37 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
             return jsonResponse(500, R"({"error":"not_a_directory"})");
         }
         return jsonResponse(200, filesystemListJson(root, path));
+    }
+
+    if (request.path == "/rpc/class-generator-defaults") {
+        return jsonResponse(200, RPCGenerateClass::defaultsJson(testMode_));
+    }
+
+    if (request.path == "/rpc/generate-class") {
+        const auto classRequest = RPCGenerateClass::parseRequest(request.body);
+        const auto result = RPCGenerateClass::generate(classRequest);
+        if (!result.ok) {
+            return jsonResponse(500, "{\"error\":\"" + jsonEscape(result.error) + "\"}");
+        }
+
+        const auto root = projectRoot();
+        const auto filePath = canonicalInsideRoot(root, classRequest.className + ".h");
+        std::error_code error;
+        if (std::filesystem::exists(filePath, error) && !jsonBoolValue(request.body, "overwrite")) {
+            return jsonResponse(409, "{\"error\":\"file_exists\",\"path\":\"" + jsonEscape(filePath.string()) + "\"}");
+        }
+
+        std::ofstream file(filePath, std::ios::binary | std::ios::trunc);
+        if (!file) {
+            return jsonResponse(500, R"({"error":"write_class_failed"})");
+        }
+        file << result.content;
+        if (project_) {
+            addOpenedFile(*project_, filePath);
+        }
+        return jsonResponse(200, "{\"generated\":true,\"path\":\"" + jsonEscape(filePath.string()) +
+            "\",\"language\":\"" + jsonEscape(languageForPath(filePath)) + "\",\"content\":\"" +
+            jsonEscape(result.content) + "\"}");
     }
 
     if (request.path == "/rpc/create-filesystem-file") {

@@ -171,6 +171,11 @@ button {
   min-height: 520px;
 }
 
+.internal-window.class-generator-window {
+  width: min(960px, calc(100% - 32px));
+  min-height: 680px;
+}
+
 .internal-window.file-select-window {
   width: min(620px, calc(100% - 32px));
   min-height: 470px;
@@ -265,6 +270,11 @@ button {
 }
 
 .filesystem-window .window-content {
+  height: calc(100% - 42px);
+  padding: 0;
+}
+
+.class-generator-window .window-content {
   height: calc(100% - 42px);
   padding: 0;
 }
@@ -652,6 +662,185 @@ button {
 .project-options-actions button:hover {
   background: #eaf4f1;
   border-color: #27a98d;
+}
+
+.class-generator {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, auto) minmax(0, auto) auto auto;
+  min-height: 638px;
+  height: 100%;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.class-generator-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid #d9e1e8;
+  background: #f8fafb;
+  color: #20313f;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.class-generator-class-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5ebf0;
+}
+
+.class-generator-class-row span {
+  color: #607080;
+  font-size: 13px;
+}
+
+.class-generator input,
+.class-generator select {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+}
+
+.class-generator input.invalid {
+  border-color: #c64747;
+  background: #fff8f8;
+}
+
+.class-generator-section {
+  border-bottom: 1px solid #e5ebf0;
+  min-width: 760px;
+}
+
+.class-generator-section-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: #ffffff;
+}
+
+.class-generator-section-title strong {
+  color: #20313f;
+  font-size: 13px;
+}
+
+.class-generator-section-title button,
+.class-generator-actions button,
+.class-generator-row-button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+  cursor: pointer;
+}
+
+.class-generator-section-title button:hover,
+.class-generator-actions button:hover,
+.class-generator-row-button:hover {
+  background: #eaf4f1;
+  border-color: #27a98d;
+}
+
+.class-generator-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.class-generator-table th {
+  height: 28px;
+  padding: 0 6px;
+  border-top: 1px solid #edf2f6;
+  border-bottom: 1px solid #d9e1e8;
+  background: #f8fafb;
+  color: #607080;
+  text-align: left;
+  font-weight: 650;
+}
+
+.class-generator-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #edf2f6;
+  vertical-align: middle;
+}
+
+.class-generator-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+}
+
+.class-generator-table input[type="number"] {
+  width: 86px;
+}
+
+.class-generator-table.ports th:nth-child(1),
+.class-generator-table.members th:nth-child(1) {
+  width: 190px;
+}
+
+.class-generator-table.ports th:nth-child(2),
+.class-generator-table.members th:nth-child(2) {
+  width: 130px;
+}
+
+.class-generator-table.ports th:last-child,
+.class-generator-table.members th:last-child {
+  width: 54px;
+}
+
+.class-generator-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5ebf0;
+}
+
+.class-generator-options label {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: #20313f;
+  font-size: 13px;
+}
+
+.class-generator-options input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+}
+
+.class-generator-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+}
+
+.class-generator-message {
+  min-width: 0;
+  color: #607080;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.class-generator-message.error {
+  color: #b23b3b;
 }
 
 .filesystem-view {
