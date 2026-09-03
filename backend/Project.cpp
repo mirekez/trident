@@ -106,6 +106,14 @@ std::string jsonArrayValue(const std::string& body, const std::string& key) {
     return {};
 }
 
+bool isCppFile(const std::filesystem::path& path) {
+    return path.extension() == ".cpp";
+}
+
+std::filesystem::path oneFileMetadataPath(const std::filesystem::path& filePath) {
+    return filePath.parent_path() / ".tribe" / (filePath.stem().string() + ".json");
+}
+
 } // namespace
 
 Project::Project(std::filesystem::path projectPath)
@@ -157,10 +165,75 @@ bool Project::load(const std::filesystem::path& projectPath, Project& project) {
     return true;
 }
 
+Project Project::createOneFile(const std::filesystem::path& filePath) {
+    std::error_code error;
+    const auto canonicalFile = std::filesystem::weakly_canonical(filePath, error);
+    const auto file = error ? std::filesystem::absolute(filePath) : canonicalFile;
+
+    Project project(file.parent_path());
+    project.singleFileProject = true;
+    project.projectFile = file;
+    project.projectName = file.stem().string();
+    project.topModuleName = file.stem().string();
+    project.topModuleFile = file.filename().string();
+    project.mainTestFile = file.filename().string();
+    project.additionalSources.clear();
+    project.openedFiles = {file};
+    project.windowsJson = R"([{"key":"development","open":true,"x":88,"y":88,"width":1120,"height":724,"maximized":false,"alwaysOnTop":false}])";
+    return project;
+}
+
+bool Project::loadOneFile(const std::filesystem::path& filePath, Project& project) {
+    std::error_code error;
+    const auto canonicalFile = std::filesystem::weakly_canonical(filePath, error);
+    if (error || !std::filesystem::is_regular_file(canonicalFile, error) || !isCppFile(canonicalFile)) {
+        return false;
+    }
+
+    auto loaded = createOneFile(canonicalFile);
+    std::ifstream file(oneFileMetadataPath(canonicalFile), std::ios::binary);
+    if (file) {
+        std::ostringstream stream;
+        stream << file.rdbuf();
+        const auto json = stream.str();
+
+        const auto projectName = jsonStringValue(json, "projectName");
+        if (!projectName.empty()) {
+            loaded.projectName = projectName;
+        }
+        const auto topModuleName = jsonStringValue(json, "topModuleName");
+        if (!topModuleName.empty()) {
+            loaded.topModuleName = topModuleName;
+        }
+        const auto topModuleFile = jsonStringValue(json, "topModuleFile");
+        if (!topModuleFile.empty()) {
+            loaded.topModuleFile = topModuleFile;
+        }
+        const auto mainTestFile = jsonStringValue(json, "mainTestFile");
+        if (!mainTestFile.empty()) {
+            loaded.mainTestFile = mainTestFile;
+        }
+        loaded.additionalSources = jsonStringValue(json, "additionalSources");
+        const auto windowsJson = jsonArrayValue(json, "windows");
+        if (!windowsJson.empty()) {
+            loaded.windowsJson = windowsJson;
+        }
+    }
+
+    loaded.singleFileProject = true;
+    loaded.projectFile = canonicalFile;
+    loaded.openedFiles = {canonicalFile};
+    loaded.save();
+    project = std::move(loaded);
+    return true;
+}
+
 std::string Project::toJson() const {
     std::ostringstream json;
     json << "{\"path\":\"" << jsonEscape(path.string()) << "\",\"projectName\":\""
-         << jsonEscape(projectName) << "\",\"topModuleName\":\""
+         << jsonEscape(projectName) << "\",\"singleFileProject\":"
+         << (singleFileProject ? "true" : "false") << ",\"projectFile\":\""
+         << jsonEscape(projectFile.string()) << "\",\"topModuleName\":\""
          << jsonEscape(topModuleName) << "\",\"topModuleFile\":\""
          << jsonEscape(topModuleFile) << "\",\"mainTestFile\":\""
          << jsonEscape(mainTestFile) << "\",\"additionalSources\":\""
@@ -178,13 +251,15 @@ std::string Project::toJson() const {
 
 bool Project::save() const {
     std::error_code error;
-    const auto tridentDir = path / ".trident";
-    std::filesystem::create_directories(tridentDir, error);
+    const auto metadata = singleFileProject && !projectFile.empty()
+        ? oneFileMetadataPath(projectFile)
+        : path / ".trident" / "project.json";
+    std::filesystem::create_directories(metadata.parent_path(), error);
     if (error) {
         return false;
     }
 
-    std::ofstream file(tridentDir / "project.json", std::ios::binary);
+    std::ofstream file(metadata, std::ios::binary);
     if (!file) {
         return false;
     }

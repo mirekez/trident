@@ -176,6 +176,11 @@ button {
   min-height: 680px;
 }
 
+.internal-window.schematics-window {
+  width: min(1180px, calc(100% - 32px));
+  min-height: 720px;
+}
+
 .internal-window.file-select-window {
   width: min(620px, calc(100% - 32px));
   min-height: 470px;
@@ -275,6 +280,11 @@ button {
 }
 
 .class-generator-window .window-content {
+  height: calc(100% - 42px);
+  padding: 0;
+}
+
+.schematics-window .window-content {
   height: calc(100% - 42px);
   padding: 0;
 }
@@ -529,6 +539,69 @@ button {
 .path-selector-question-actions button:hover {
   background: #eaf4f1;
   border-color: #27a98d;
+}
+
+.app-question {
+  position: absolute;
+  inset: 0;
+  z-index: 200000;
+  display: grid;
+  place-items: center;
+  background: rgba(23, 32, 42, 0.38);
+}
+
+.app-question-dialog {
+  width: min(400px, calc(100% - 40px));
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #9fb0bf;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 16px 30px rgba(23, 32, 42, 0.24);
+}
+
+.app-question-title {
+  color: #20313f;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.app-question-message {
+  color: #475b6a;
+  line-height: 1.45;
+}
+
+.app-question-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.app-question-actions button {
+  min-width: 64px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #b8c6d2;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+  cursor: pointer;
+}
+
+.app-question-actions button:hover {
+  background: #eaf4f1;
+  border-color: #27a98d;
+}
+
+.app-question-actions button.primary {
+  border-color: #168b75;
+  background: #168b75;
+  color: #ffffff;
+}
+
+.app-question-actions button.primary:hover {
+  background: #11715f;
 }
 
 .field-row span {
@@ -992,6 +1065,232 @@ button {
   min-height: 36px;
   border-top: 1px solid #e5ebf0;
   overflow-wrap: anywhere;
+}
+
+.schematics {
+  display: grid;
+  grid-template-rows: 38px auto minmax(0, 1fr);
+  height: 678px;
+  min-height: 520px;
+  overflow: hidden;
+  background: #ffffff;
+  color: #17202a;
+}
+
+.maximized .schematics {
+  height: 100%;
+}
+
+.schematics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid #cfd9e2;
+  background: #f5f7f9;
+}
+
+.schematics-tabs {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 100%;
+}
+
+.schematics-tab {
+  height: 28px;
+  min-width: 86px;
+  padding: 0 10px;
+  border: 1px solid #c6d0d9;
+  border-left-width: 0;
+  background: #ffffff;
+  color: #40515f;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.schematics-tab:first-child {
+  border-left-width: 1px;
+}
+
+.schematics-tab.active {
+  background: #20252b;
+  border-color: #20252b;
+  color: #ffffff;
+}
+
+.schematics-top-button {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #c6d0d9;
+  background: #ffffff;
+  color: #40515f;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.schematics-top-button[hidden] {
+  display: none;
+}
+
+.schematics-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: #20313f;
+}
+
+.schematics-summary {
+  flex: 0 0 auto;
+  color: #607080;
+  font-size: 12px;
+}
+
+.schematics-notice {
+  min-height: 30px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #d6dee5;
+  background: #f4f7f9;
+  color: #40515f;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.schematics-notice[hidden] {
+  display: none;
+}
+
+.schematics-canvas {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #ffffff;
+}
+
+.schematics-message {
+  padding: 14px;
+  color: #33414e;
+  white-space: pre-wrap;
+}
+
+.schematics-message.error {
+  color: #8d1f1f;
+}
+
+.schematics-view {
+  position: relative;
+  display: block;
+}
+
+.schematics-svg {
+  display: block;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  user-select: none;
+}
+
+.schematics-svg text {
+  cursor: default;
+  user-select: none;
+}
+
+.schematics-background {
+  fill: #ffffff;
+}
+
+.schematics-module {
+  fill: #eef1f4;
+  stroke: #111820;
+  stroke-width: 1.5;
+}
+
+.schematics-module-group[role="button"] {
+  cursor: zoom-in;
+}
+
+.schematics-module-group[role="button"] text {
+  cursor: zoom-in;
+  user-select: none;
+}
+
+.schematics-module-group[role="button"]:focus .schematics-module {
+  stroke: #2f6fed;
+  stroke-width: 2.2;
+}
+
+.schematics-module-overlay {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: transparent;
+  appearance: none;
+}
+
+.schematics-module-overlay.drillable {
+  cursor: zoom-in;
+}
+
+.schematics-module-overlay.leaf {
+  cursor: default;
+}
+
+.schematics-module-overlay:focus-visible {
+  outline: 2px solid #2f6fed;
+  outline-offset: -2px;
+}
+
+.schematics-module-titlebar,
+.schematics-module-titlebar-fill {
+  fill: #20252b;
+}
+
+.schematics-module-title {
+  fill: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.schematics-port-stub {
+  stroke: #111820;
+  stroke-width: 1.5;
+}
+
+.schematics-port-label {
+  fill: #27323c;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.schematics-net {
+  fill: none;
+  stroke: #303942;
+  stroke-width: 1.4;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.schematics-net-dot {
+  fill: #303942;
+}
+
+.schematics-net-label {
+  fill: #111820;
+  font-size: 11px;
+  font-weight: 650;
+  pointer-events: none;
 }
 
 .bar-chart {

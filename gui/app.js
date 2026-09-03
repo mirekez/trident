@@ -5,6 +5,7 @@ import { ProjectOptions } from './ProjectOptions.js';
 import { Filesystem } from './Filesysten.js';
 import { FileSelect } from './FileSelect.js';
 import { ClassGenerator } from './ClassGenerator.js';
+import { Schematics } from './Schematics.js';
 
 const desktop = document.querySelector('#desktop');
 const launchButtons = document.querySelector('#launch-buttons');
@@ -58,6 +59,15 @@ const rpcConfig = {
     endpoint: '/rpc/class-generator-defaults',
     windowClass: 'class-generator-window',
     render: renderClassGenerator
+  },
+  schematics: {
+    title: 'Schematics',
+    buttonLabel: 'Schematics',
+    icon: schematicsIcon(),
+    endpoint: '/rpc/load-schematics',
+    windowClass: 'schematics-window',
+    reloadOnOpen: true,
+    render: renderSchematics
   },
   development: {
     title: 'Development',
@@ -122,6 +132,9 @@ async function createWindow(key, renderOptions = {}) {
   if (existing?.isConnected) {
     bringWindowToFront(existing);
     existing.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (config.reloadOnOpen) {
+      await populateWindowContent(key, existing, renderOptions);
+    }
     return;
   }
   openMainWindows.delete(key);
@@ -173,10 +186,19 @@ async function createWindow(key, renderOptions = {}) {
   });
   makeDraggable(node);
   desktop.appendChild(node);
+  await populateWindowContent(key, node, renderOptions);
+  return node;
+}
 
+async function populateWindowContent(key, node, renderOptions = {}) {
+  const config = rpcConfig[key];
+  const content = node.querySelector('.window-content');
+  content.innerHTML = '<div class="loading">Loading RPC response...</div>';
   try {
-    connection.textContent = `Calling ${config.endpoint}`;
-    const payload = await callRpc(config.endpoint);
+    connection.textContent = config.endpoint ? `Calling ${config.endpoint}` : 'Loading design data';
+    const payload = config.loader ? await config.loader() : await callRpc(config.endpoint);
+    node._cleanup?.();
+    node._cleanup = null;
     const rendered = config.render(payload, node, renderOptions);
     if (rendered.cleanup) {
       node._cleanup = rendered.cleanup;
@@ -189,7 +211,6 @@ async function createWindow(key, renderOptions = {}) {
     content.replaceChildren(renderError(error));
     connection.textContent = 'RPC error';
   }
-  return node;
 }
 
 function closeWindow(node, options = {}) {
@@ -328,6 +349,18 @@ function renderClassGenerator(payload) {
   return generator.element();
 }
 
+function renderSchematics(payload) {
+  const schematics = new Schematics({
+    payload,
+    stage: 'Compilation',
+    onLoadStage: (stage, module) => callRpc('/rpc/load-schematics', { stage, module }),
+    onStatus: (message) => {
+      connection.textContent = message;
+    }
+  });
+  return schematics.element();
+}
+
 function installPushHandlers() {
   window.pushSource = async (filename) => {
     if (!filename) {
@@ -437,6 +470,12 @@ async function saveProject(options = {}) {
     connection.textContent = 'Checking editors';
     await activeDevelopment?.saveModifiedEditors();
     await persistWindowLayoutNow();
+    if (settings.singleFileProject) {
+      connection.textContent = 'Calling /rpc/save-project';
+      const payload = await callRpc('/rpc/save-project', { overwrite: true });
+      connection.textContent = `Saved: ${payload.archive}`;
+      return true;
+    }
     let projectName = options.projectName || settings.projectName || '';
     let overwrite = Boolean(options.overwrite);
     if (!projectName) {
@@ -479,7 +518,7 @@ async function saveProject(options = {}) {
 async function openProject(path) {
   try {
     const current = await currentProjectSettings();
-    if (current && window.confirm('Save current project before opening another project?')) {
+    if (current && await askYesNo('Save current project before opening another project?', 'Open another project')) {
       const saved = await saveProject();
       if (!saved) {
         connection.textContent = 'Open project cancelled';
@@ -497,6 +536,58 @@ async function openProject(path) {
     connection.textContent = error instanceof Error ? error.message : String(error);
     return false;
   }
+}
+
+function askYesNo(message, title = 'Confirm') {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'app-question';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'app-question-dialog';
+
+    const heading = document.createElement('div');
+    heading.className = 'app-question-title';
+    heading.textContent = title;
+
+    const text = document.createElement('div');
+    text.className = 'app-question-message';
+    text.textContent = message;
+
+    const actions = document.createElement('div');
+    actions.className = 'app-question-actions';
+
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.textContent = 'No';
+
+    const yes = document.createElement('button');
+    yes.type = 'button';
+    yes.textContent = 'Yes';
+    yes.className = 'primary';
+
+    const finish = (answer) => {
+      overlay.remove();
+      resolve(answer);
+    };
+    no.addEventListener('click', () => finish(false));
+    yes.addEventListener('click', () => finish(true));
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(false);
+      }
+    });
+
+    actions.append(no, yes);
+    dialog.append(heading, text, actions);
+    overlay.appendChild(dialog);
+    desktop.appendChild(overlay);
+    yes.focus();
+  });
 }
 
 async function closeProject() {
@@ -640,10 +731,15 @@ async function openFileSelectWindow({ key, title, mode, initialPath, onSelect, o
   desktop.appendChild(node);
 
   connection.textContent = 'Calling /rpc/list-filesystem';
-  const payload = await callRpc('/rpc/list-filesystem', initialPath ? { path: initialPath } : undefined);
+  const browseRoot = mode === 'select-files' ? 'project' : 'filesystem';
+  const payload = await callRpc('/rpc/list-filesystem', {
+    ...(initialPath ? { path: initialPath } : {}),
+    browseRoot
+  });
   const selector = new FileSelect({
     payload,
     mode,
+    browseRoot,
     fetchJson: callRpc,
     onStatus: (message) => {
       connection.textContent = message;
@@ -985,6 +1081,18 @@ function classGeneratorIcon() {
       <path d="M8 12h5"/>
       <path d="M8 16h8"/>
       <path d="M16 11l2 2-2 2"/>
+    </svg>`;
+}
+
+function schematicsIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="5" width="6" height="5"/>
+      <rect x="15" y="5" width="6" height="5"/>
+      <rect x="9" y="15" width="6" height="5"/>
+      <path d="M9 7.5h6"/>
+      <path d="M18 10v3h-6v2"/>
+      <path d="M6 10v3h6v2"/>
     </svg>`;
 }
 

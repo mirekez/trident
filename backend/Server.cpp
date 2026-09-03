@@ -14,6 +14,7 @@
 #include "RPCRefreshDevLog.h"
 #include "RPCRefreshDevLogTest.h"
 #include "RPCGenerateClass.h"
+#include "RPCSchematics.h"
 #include "RPCRunBashCommand.h"
 #include "RPCStatusTest.h"
 
@@ -79,6 +80,7 @@ std::string contentTypeFor(const std::filesystem::path& path) {
     if (ext == ".html") return "text/html; charset=utf-8";
     if (ext == ".js") return "application/javascript; charset=utf-8";
     if (ext == ".css") return "text/css; charset=utf-8";
+    if (ext == ".json") return "application/json; charset=utf-8";
     if (ext == ".svg") return "image/svg+xml";
     return "application/octet-stream";
 }
@@ -274,10 +276,20 @@ bool validProjectName(const std::string& name) {
 }
 
 std::filesystem::path projectArchivePath(const Project& project) {
+    if (project.singleFileProject && !project.projectFile.empty()) {
+        return project.projectFile.parent_path() / ".tribe" / (project.projectFile.stem().string() + ".json");
+    }
     return project.path / (project.projectName + ".trident");
 }
 
 bool archiveProject(Project& project, bool overwrite, std::string* message = nullptr) {
+    if (project.singleFileProject) {
+        if (!project.save()) {
+            if (message) *message = "save_project_failed";
+            return false;
+        }
+        return true;
+    }
     if (!validProjectName(project.projectName)) {
         if (message) *message = "project_name_required";
         return false;
@@ -338,10 +350,68 @@ bool extractProjectArchive(const std::filesystem::path& archive, Project& projec
     return true;
 }
 
+bool loadProjectFolder(const std::filesystem::path& folder, Project& project, std::string* message = nullptr) {
+    std::error_code error;
+    const auto projectPath = std::filesystem::weakly_canonical(folder, error);
+    if (error || !std::filesystem::is_directory(projectPath, error)) {
+        if (message) *message = "No project folder specified";
+        return false;
+    }
+    if (!std::filesystem::is_regular_file(projectPath / ".trident" / "project.json", error)) {
+        if (message) *message = "No project folder specified";
+        return false;
+    }
+
+    auto loaded = Project(projectPath);
+    if (!Project::load(projectPath, loaded)) {
+        if (message) *message = "load_project_failed";
+        return false;
+    }
+    if (loaded.projectName.empty()) {
+        loaded.projectName = projectPath.filename().string();
+    }
+    project = std::move(loaded);
+    return true;
+}
+
+bool loadProjectPath(const std::filesystem::path& path, Project& project, std::string* message = nullptr) {
+    std::error_code error;
+    const auto canonicalPath = std::filesystem::weakly_canonical(path, error);
+    if (error) {
+        if (message) *message = "No project folder specified";
+        return false;
+    }
+    if (std::filesystem::is_directory(canonicalPath, error)) {
+        return loadProjectFolder(canonicalPath, project, message);
+    }
+    if (std::filesystem::is_regular_file(canonicalPath, error) && canonicalPath.extension() == ".cpp") {
+        if (!Project::loadOneFile(canonicalPath, project)) {
+            if (message) *message = "load_project_failed";
+            return false;
+        }
+        return true;
+    }
+    return extractProjectArchive(canonicalPath, project, message);
+}
+
 std::filesystem::path requestPathOrCurrent(const std::string& body) {
     std::error_code error;
     const auto requested = jsonStringValue(body, "path");
     auto path = requested.empty() ? std::filesystem::current_path() : std::filesystem::path(requested);
+    path = std::filesystem::weakly_canonical(path, error);
+    if (error || !std::filesystem::is_directory(path, error)) {
+        return std::filesystem::current_path();
+    }
+    return path;
+}
+
+std::filesystem::path requestDirectoryOrCurrent(const std::string& body) {
+    std::error_code error;
+    const auto requested = jsonStringValue(body, "path");
+    auto path = requested.empty() ? std::filesystem::current_path(error) : std::filesystem::path(requested);
+    if (path.empty()) {
+        path = std::filesystem::current_path();
+    }
     path = std::filesystem::weakly_canonical(path, error);
     if (error || !std::filesystem::is_directory(path, error)) {
         return std::filesystem::current_path();
@@ -501,9 +571,13 @@ std::string filesystemListJson(const std::filesystem::path& root, const std::fil
     std::sort(folders.begin(), folders.end(), byPath);
     std::sort(files.begin(), files.end(), byPath);
 
+    const bool isProjectFolder = std::filesystem::is_regular_file(path / ".trident" / "project.json", error);
+
     std::ostringstream json;
     json << "{\"root\":\"" << jsonEscape(root.string()) << "\",\"path\":\"" << jsonEscape(path.string())
-         << "\",\"parent\":\"" << jsonEscape((path == root ? root : path.parent_path()).string()) << "\",\"items\":[";
+         << "\",\"parent\":\"" << jsonEscape((path == root ? root : path.parent_path()).string())
+         << "\",\"isProjectFolder\":" << (isProjectFolder ? "true" : "false")
+         << ",\"items\":[";
     bool first = true;
     const auto writeItem = [&](const Item& item) {
         if (!first) {
@@ -960,6 +1034,7 @@ std::string Server::dispatch(const HttpRequest& request) {
         request.path == "/rpc/create-file" ||
         request.path == "/rpc/class-generator-defaults" ||
         request.path == "/rpc/generate-class" ||
+        request.path == "/rpc/load-schematics" ||
         request.path == "/rpc/close-file" ||
         request.path == "/rpc/save-file") {
         return handleProjectRpc(request);
@@ -1041,10 +1116,10 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
     }
 
     if (request.path == "/rpc/load-project") {
-        const auto archive = jsonStringValue(request.body, "path");
+        const auto path = jsonStringValue(request.body, "path");
         Project loaded(std::filesystem::current_path());
         std::string message;
-        if (!extractProjectArchive(archive, loaded, &message)) {
+        if (!loadProjectPath(path, loaded, &message)) {
             return jsonResponse(500, "{\"error\":\"" + jsonEscape(message) + "\"}");
         }
         project_ = std::make_unique<Project>(std::move(loaded));
@@ -1145,9 +1220,17 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
     }
 
     if (request.path == "/rpc/list-filesystem") {
-        const auto root = projectRoot();
-        const auto requested = jsonStringValue(request.body, "path");
-        const auto path = canonicalInsideRoot(root, requested.empty() ? root : std::filesystem::path(requested));
+        const bool browseFilesystem = jsonStringValue(request.body, "browseRoot") == "filesystem";
+        const auto path = browseFilesystem
+            ? requestDirectoryOrCurrent(request.body)
+            : canonicalInsideRoot(projectRoot(),
+                                  jsonStringValue(request.body, "path").empty()
+                                      ? projectRoot()
+                                      : std::filesystem::path(jsonStringValue(request.body, "path")));
+        auto root = browseFilesystem ? path.root_path() : projectRoot();
+        if (root.empty()) {
+            root = path;
+        }
         std::error_code error;
         if (!std::filesystem::is_directory(path, error)) {
             return jsonResponse(500, R"({"error":"not_a_directory"})");
@@ -1184,6 +1267,50 @@ std::string Server::handleProjectRpc(const HttpRequest& request) {
         return jsonResponse(200, "{\"generated\":true,\"path\":\"" + jsonEscape(filePath.string()) +
             "\",\"language\":\"" + jsonEscape(languageForPath(filePath)) + "\",\"content\":\"" +
             jsonEscape(result.content) + "\"}");
+    }
+
+    if (request.path == "/rpc/load-schematics") {
+        if (!project_) {
+            return jsonResponse(500, R"({"error":"no_project"})");
+        }
+        if (!compilationFlow_.loaded()) {
+            return jsonResponse(500, R"({"error":"flow_not_loaded"})");
+        }
+        auto stage = jsonStringValue(request.body, "stage");
+        if (stage.empty()) {
+            stage = "Compilation";
+        }
+        const auto moduleName = jsonStringValue(request.body, "module");
+        if ((stage == "Compilation" || stage == "Test") &&
+                (project_->topModuleName.empty() || project_->topModuleFile.empty())) {
+            return jsonResponse(500, R"({"error":"compile_settings_required"})");
+        }
+        if (stage == "Test" && project_->mainTestFile.empty()) {
+            return jsonResponse(500, R"({"error":"run_settings_required"})");
+        }
+        if (stage == "Synthesis" && project_->topModuleName.empty()) {
+            return jsonResponse(500, R"({"error":"synthesize_settings_required"})");
+        }
+        const auto result = RPCSchematics::refreshAndLoad(
+            project_->path,
+            pushRoot_.parent_path(),
+            compilationFlow_,
+            project_->projectName,
+            project_->topModuleName,
+            project_->topModuleFile,
+            project_->mainTestFile,
+            project_->additionalSources,
+            stage,
+            moduleName);
+        if (!result.ok) {
+            if (result.error == "flow_failed") {
+                return jsonResponse(500, "{\"error\":\"flow_failed\",\"stage\":\"" + jsonEscape(stage) +
+                    "\",\"flow\":" + result.json + "}");
+            }
+            return jsonResponse(500, "{\"error\":\"" + jsonEscape(result.error) + "\",\"path\":\"" +
+                jsonEscape((project_->path / "design.json").string()) + "\"}");
+        }
+        return jsonResponse(200, result.json);
     }
 
     if (request.path == "/rpc/create-filesystem-file") {

@@ -300,6 +300,10 @@ std::filesystem::path CompilationFlow::toolsPath() const {
     return existingToolsPath(sourcePath_);
 }
 
+bool CompilationFlow::hasAction(const std::string& action) const {
+    return commands_.find(action) != commands_.end();
+}
+
 std::string CompilationFlow::execute(const std::string& action,
                                      const std::filesystem::path& projectPath,
                                      const std::filesystem::path& binDir,
@@ -307,7 +311,8 @@ std::string CompilationFlow::execute(const std::string& action,
                                      const std::string& topModuleName,
                                      const std::string& topModuleFile,
                                      const std::string& mainTestFile,
-                                     const std::string& additionalSources) const {
+                                     const std::string& additionalSources,
+                                     const std::string& jsonOutputPath) const {
     const auto commandIt = commands_.find(action);
     if (commandIt == commands_.end()) {
         return "{\"error\":\"unknown_flow_action\",\"action\":\"" + jsonEscape(action) + "\"}";
@@ -333,6 +338,8 @@ std::string CompilationFlow::execute(const std::string& action,
     replaceAll(command, "${MainTestFile}", mainTestFile);
     replaceAll(command, "$(AdditionalSources)", additionalSources);
     replaceAll(command, "${AdditionalSources}", additionalSources);
+    replaceAll(command, "$(JsonOutputPath)", jsonOutputPath);
+    replaceAll(command, "${JsonOutputPath}", jsonOutputPath);
 
     const std::string script =
         "cd " + shellQuote(projectString) + " && {\n" + command +

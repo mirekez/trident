@@ -1,20 +1,27 @@
-#include "Memory.h"
-#include "MemoryHelper.h"
+#include "MemoryTest.h"
 
 #include <iostream>
 
 int main()
 {
-    std::cout << "Trident restored Memory demo\n";
+    std::cout << "Trident Memory demo\n";
     std::cout << "Top module: Memory\n";
 
-    bool ok = true;
-    for (unsigned i = 0; i < 8; ++i) {
-        const auto value = memoryPattern(i);
-        ok = ok && verifyMemoryPattern(i, value);
-        std::cout << "pattern[" << i << "] = 0x" << std::hex << value << std::dec << "\n";
+    MemoryTestHarness harness;
+    harness.__inst_name = "MemoryTestHarness";
+    harness._assign();
+
+    harness._work(true);
+    harness._strobe();
+    ++_system_clock;
+
+    for (int cycle = 0; cycle < 8 && !harness.test.done_out(); ++cycle) {
+        harness._work(false);
+        harness._strobe();
+        ++_system_clock;
     }
 
-    std::cout << (ok ? "Memory helper test passed\n" : "Memory helper test failed\n");
+    const bool ok = harness.passed();
+    std::cout << (ok ? "Memory module test passed\n" : "Memory module test failed\n");
     return ok ? 0 : 1;
 }

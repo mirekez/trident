@@ -10,6 +10,7 @@ public:
     bool loaded() const;
     const std::filesystem::path& sourcePath() const;
     std::filesystem::path toolsPath() const;
+    bool hasAction(const std::string& action) const;
     std::string execute(const std::string& action,
                         const std::filesystem::path& projectPath,
                         const std::filesystem::path& binDir,
@@ -17,7 +18,8 @@ public:
                         const std::string& topModuleName,
                         const std::string& topModuleFile,
                         const std::string& mainTestFile,
-                        const std::string& additionalSources) const;
+                        const std::string& additionalSources,
+                        const std::string& jsonOutputPath = {}) const;
 
 private:
     std::filesystem::path sourcePath_;

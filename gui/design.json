@@ -1,0 +1,169 @@
+{
+  "name": "MemoryPrj demo RTL",
+  "modules": [
+    {
+      "id": "clocking",
+      "title": "Clocking",
+      "ports": [
+        { "name": "clk_out", "direction": "output", "width": 1 },
+        { "name": "reset_out", "direction": "output", "width": 1 }
+      ]
+    },
+    {
+      "id": "cpu",
+      "title": "CpuCore",
+      "ports": [
+        { "name": "clk", "direction": "input", "width": 1 },
+        { "name": "reset", "direction": "input", "width": 1 },
+        { "name": "mem_rdata", "direction": "input", "width": 32 },
+        { "name": "irq", "direction": "input", "width": 1 },
+        { "name": "mem_addr", "direction": "output", "width": 16 },
+        { "name": "mem_wdata", "direction": "output", "width": 32 },
+        { "name": "mem_we", "direction": "output", "width": 1 },
+        { "name": "uart_tx_data", "direction": "output", "width": 8 }
+      ]
+    },
+    {
+      "id": "dma",
+      "title": "DmaEngine",
+      "ports": [
+        { "name": "clk", "direction": "input", "width": 1 },
+        { "name": "reset", "direction": "input", "width": 1 },
+        { "name": "dma_ack", "direction": "input", "width": 1 },
+        { "name": "dma_addr", "direction": "output", "width": 16 },
+        { "name": "dma_req", "direction": "output", "width": 1 }
+      ]
+    },
+    {
+      "id": "arbiter",
+      "title": "MemoryArbiter",
+      "ports": [
+        { "name": "clk", "direction": "input", "width": 1 },
+        { "name": "reset", "direction": "input", "width": 1 },
+        { "name": "cpu_addr", "direction": "input", "width": 16 },
+        { "name": "cpu_wdata", "direction": "input", "width": 32 },
+        { "name": "cpu_we", "direction": "input", "width": 1 },
+        { "name": "dma_addr", "direction": "input", "width": 16 },
+        { "name": "dma_req", "direction": "input", "width": 1 },
+        { "name": "mem_rdata", "direction": "input", "width": 32 },
+        { "name": "cpu_rdata", "direction": "output", "width": 32 },
+        { "name": "dma_ack", "direction": "output", "width": 1 },
+        { "name": "mem_addr", "direction": "output", "width": 16 },
+        { "name": "mem_wdata", "direction": "output", "width": 32 },
+        { "name": "mem_we", "direction": "output", "width": 1 }
+      ]
+    },
+    {
+      "id": "memory",
+      "title": "BlockMemory",
+      "ports": [
+        { "name": "clk", "direction": "input", "width": 1 },
+        { "name": "reset", "direction": "input", "width": 1 },
+        { "name": "addr", "direction": "input", "width": 16 },
+        { "name": "wdata", "direction": "input", "width": 32 },
+        { "name": "we", "direction": "input", "width": 1 },
+        { "name": "rdata", "direction": "output", "width": 32 }
+      ]
+    },
+    {
+      "id": "uart",
+      "title": "Uart",
+      "ports": [
+        { "name": "clk", "direction": "input", "width": 1 },
+        { "name": "reset", "direction": "input", "width": 1 },
+        { "name": "tx_data", "direction": "input", "width": 8 },
+        { "name": "rx_data", "direction": "output", "width": 8 },
+        { "name": "irq", "direction": "output", "width": 1 }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "net": "clk",
+      "from": { "module": "clocking", "port": "clk_out" },
+      "to": [
+        { "module": "cpu", "port": "clk" },
+        { "module": "dma", "port": "clk" },
+        { "module": "arbiter", "port": "clk" },
+        { "module": "memory", "port": "clk" },
+        { "module": "uart", "port": "clk" }
+      ]
+    },
+    {
+      "net": "reset",
+      "from": { "module": "clocking", "port": "reset_out" },
+      "to": [
+        { "module": "cpu", "port": "reset" },
+        { "module": "dma", "port": "reset" },
+        { "module": "arbiter", "port": "reset" },
+        { "module": "memory", "port": "reset" },
+        { "module": "uart", "port": "reset" }
+      ]
+    },
+    {
+      "net": "cpu_addr",
+      "from": { "module": "cpu", "port": "mem_addr" },
+      "to": [{ "module": "arbiter", "port": "cpu_addr" }]
+    },
+    {
+      "net": "cpu_wdata",
+      "from": { "module": "cpu", "port": "mem_wdata" },
+      "to": [{ "module": "arbiter", "port": "cpu_wdata" }]
+    },
+    {
+      "net": "cpu_we",
+      "from": { "module": "cpu", "port": "mem_we" },
+      "to": [{ "module": "arbiter", "port": "cpu_we" }]
+    },
+    {
+      "net": "dma_addr",
+      "from": { "module": "dma", "port": "dma_addr" },
+      "to": [{ "module": "arbiter", "port": "dma_addr" }]
+    },
+    {
+      "net": "dma_req",
+      "from": { "module": "dma", "port": "dma_req" },
+      "to": [{ "module": "arbiter", "port": "dma_req" }]
+    },
+    {
+      "net": "dma_ack",
+      "from": { "module": "arbiter", "port": "dma_ack" },
+      "to": [{ "module": "dma", "port": "dma_ack" }]
+    },
+    {
+      "net": "mem_addr",
+      "from": { "module": "arbiter", "port": "mem_addr" },
+      "to": [{ "module": "memory", "port": "addr" }]
+    },
+    {
+      "net": "mem_wdata",
+      "from": { "module": "arbiter", "port": "mem_wdata" },
+      "to": [{ "module": "memory", "port": "wdata" }]
+    },
+    {
+      "net": "mem_we",
+      "from": { "module": "arbiter", "port": "mem_we" },
+      "to": [{ "module": "memory", "port": "we" }]
+    },
+    {
+      "net": "mem_rdata",
+      "from": { "module": "memory", "port": "rdata" },
+      "to": [{ "module": "arbiter", "port": "mem_rdata" }]
+    },
+    {
+      "net": "cpu_rdata",
+      "from": { "module": "arbiter", "port": "cpu_rdata" },
+      "to": [{ "module": "cpu", "port": "mem_rdata" }]
+    },
+    {
+      "net": "uart_tx",
+      "from": { "module": "cpu", "port": "uart_tx_data" },
+      "to": [{ "module": "uart", "port": "tx_data" }]
+    },
+    {
+      "net": "uart_irq",
+      "from": { "module": "uart", "port": "irq" },
+      "to": [{ "module": "cpu", "port": "irq" }]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ export class FileSelect {
     this.onStatus = options.onStatus || (() => {});
     this.onSelect = options.onSelect || (() => {});
     this.onCancel = options.onCancel || (() => {});
+    this.browseRoot = options.browseRoot || (this.mode === 'select-files' ? 'project' : 'filesystem');
     this.selectedFiles = new Set();
 
     this.root = document.createElement('section');
@@ -17,11 +18,14 @@ export class FileSelect {
     this.toolbar = document.createElement('div');
     this.toolbar.className = 'file-select-toolbar';
     this.upButton = this.button('Up', () => this.loadPath(this.payload.parent));
+    this.openFolderButton = this.button('Open project', () => this.submitCurrentFolder());
     this.cancelButton = this.button('Cancel', () => this.onCancel());
     this.addButton = this.button('Add selected', () => this.submitSelectedFiles());
     this.toolbar.append(this.upButton);
     if (this.mode === 'select-files') {
       this.toolbar.appendChild(this.addButton);
+    } else if (this.mode === 'open-project') {
+      this.toolbar.appendChild(this.openFolderButton);
     }
     this.toolbar.appendChild(this.cancelButton);
 
@@ -59,6 +63,11 @@ export class FileSelect {
   render() {
     this.pathLine.textContent = this.payload.path || '';
     this.upButton.disabled = !this.payload.parent || this.payload.parent === this.payload.path;
+    if (this.openFolderButton) {
+      const showOpenProject = this.mode === 'open-project' && Boolean(this.payload.isProjectFolder);
+      this.openFolderButton.hidden = !showOpenProject;
+      this.openFolderButton.disabled = !showOpenProject;
+    }
     this.list.replaceChildren();
 
     const items = this.payload.items || [];
@@ -66,7 +75,10 @@ export class FileSelect {
       if (item.kind === 'folder') {
         return true;
       }
-      return this.mode === 'select-files' ? item.kind === 'file' : isProjectArchive(item.name);
+      if (this.mode === 'select-files') {
+        return item.kind === 'file';
+      }
+      return this.mode === 'open-project' ? isOpenableProjectFile(item.name) : isProjectArchive(item.name);
     });
     visible.forEach((item) => {
       const row = this.mode === 'select-files' && item.kind === 'file'
@@ -98,12 +110,14 @@ export class FileSelect {
       row.addEventListener('click', () => {
         if (item.kind === 'folder') {
           this.loadPath(item.path);
+        } else if (this.mode === 'open-project') {
+          this.onSelect({ path: item.path });
         }
       });
       row.addEventListener('dblclick', () => {
         if (item.kind === 'folder') {
           this.loadPath(item.path);
-        } else if (this.mode !== 'select-files') {
+        } else if (this.mode !== 'select-files' && this.mode !== 'open-project') {
           this.onSelect({ path: item.path });
         }
       });
@@ -115,7 +129,7 @@ export class FileSelect {
       empty.className = 'file-select-empty';
       empty.textContent = this.mode === 'select-files'
         ? 'No files here'
-        : this.mode === 'save-project' ? 'No project archives' : 'No project archives here';
+        : this.mode === 'save-project' ? 'No project archives' : 'No projects here';
       this.list.appendChild(empty);
     }
     this.updateAddButton();
@@ -127,7 +141,7 @@ export class FileSelect {
     }
     this.onStatus('Calling /rpc/list-filesystem');
     try {
-      this.payload = await this.fetchJson('/rpc/list-filesystem', { path });
+      this.payload = await this.fetchJson('/rpc/list-filesystem', { path, browseRoot: this.browseRoot });
       this.message.textContent = '';
       this.render();
       this.onStatus('Ready');
@@ -167,6 +181,14 @@ export class FileSelect {
     this.onSelect({ files });
   }
 
+  submitCurrentFolder() {
+    if (!this.payload.path) {
+      this.message.textContent = 'No project folder specified';
+      return;
+    }
+    this.onSelect({ path: this.payload.path });
+  }
+
   updateAddButton() {
     if (this.addButton) {
       this.addButton.disabled = this.mode === 'select-files' && this.selectedFiles.size === 0;
@@ -202,6 +224,10 @@ async function defaultFetchJson(endpoint, body = undefined) {
 
 function isProjectArchive(name) {
   return name.endsWith('.trident');
+}
+
+function isOpenableProjectFile(name) {
+  return isProjectArchive(name) || name.endsWith('.cpp');
 }
 
 function normalizeProjectName(name) {

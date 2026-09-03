@@ -505,11 +505,11 @@ function(trident_cmake_tool tool_name tool_url)
         set(tool_build_command
             ${TRIDENT_CMAKE_LAUNCHER}
             "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
-            COMMAND "${_TRIDENT_CMAKE}" -E remove_directory "${CMAKE_BINARY_DIR}/cpphdl/include"
-            COMMAND "${_TRIDENT_CMAKE}" -E make_directory "${CMAKE_BINARY_DIR}/cpphdl"
+            COMMAND "${_TRIDENT_CMAKE}" -E remove_directory "<BINARY_DIR>/include"
+            COMMAND "${_TRIDENT_CMAKE}" -E make_directory "<BINARY_DIR>"
             COMMAND "${_TRIDENT_CMAKE}" -E copy_directory
                 "${TOOLS_SOURCE_DIR}/cpphdl/include"
-                "${CMAKE_BINARY_DIR}/cpphdl/include"
+                "<BINARY_DIR>/include"
         )
     elseif(tool_name STREQUAL "scalepnr")
         set(tool_patch_command
@@ -581,6 +581,16 @@ if(TRIDENT_BUILD_CPPHDL)
         ${TRIDENT_CPPHDL_EXTRA_CMAKE_ARGS}
     )
     ExternalProject_Add_StepDependencies(cpphdl configure cpphdl_slang)
+
+    add_custom_target(cpphdl_headers_sync
+        COMMAND "${_TRIDENT_CMAKE}" -E make_directory
+            "${TOOLS_BUILD_DIR}/cpphdl/include"
+        COMMAND "${_TRIDENT_CMAKE}" -E copy_directory
+            "${TOOLS_SOURCE_DIR}/cpphdl/include"
+            "${TOOLS_BUILD_DIR}/cpphdl/include"
+        COMMENT "Synchronizing cpphdl headers into the tools runtime tree"
+        VERBATIM
+    )
 endif()
 
 trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git
@@ -758,6 +768,6 @@ ExternalProject_Add(yosys_slang
 
 set(TRIDENT_TOOLS_ALL_TARGETS scalepnr yosys yosys_slang)
 if(TRIDENT_BUILD_CPPHDL)
-    list(PREPEND TRIDENT_TOOLS_ALL_TARGETS cpphdl)
+    list(PREPEND TRIDENT_TOOLS_ALL_TARGETS cpphdl cpphdl_headers_sync)
 endif()
 add_custom_target(trident_tools ALL DEPENDS ${TRIDENT_TOOLS_ALL_TARGETS})
