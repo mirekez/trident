@@ -502,6 +502,11 @@ function(trident_cmake_tool tool_name tool_url)
     trident_source_args(source_args "${tool_name}" "${tool_url}")
     set(tool_patch_command "")
     if(tool_name STREQUAL "cpphdl")
+        set(tool_patch_command
+            "${_TRIDENT_CMAKE}"
+                -DCPPHDL_SOURCE_DIR=<SOURCE_DIR>
+                -P "${CMAKE_CURRENT_LIST_DIR}/PatchCpphdlCondaPrefix.cmake"
+        )
         set(tool_build_command
             ${TRIDENT_CMAKE_LAUNCHER}
             "${_TRIDENT_CMAKE}" --build <BINARY_DIR> --target cpphdl hdlcpp
@@ -600,12 +605,16 @@ trident_cmake_tool(scalepnr https://github.com/mirekez/scalepnr.git
 trident_tool_version(CMAKE_HOST_VERSION cmake)
 string(REGEX REPLACE "^v" "" CMAKE_HOST_VERSION_NUMBER "${CMAKE_HOST_VERSION}")
 
-set(YOSYS_PATCH_COMMAND "")
+set(YOSYS_PATCH_COMMAND
+    "${_TRIDENT_CMAKE}"
+        -DYOSYS_SOURCE_DIR=<SOURCE_DIR>
+        -P "${CMAKE_CURRENT_LIST_DIR}/PatchYosysDependencies.cmake"
+)
 if(WIN32 AND CMAKE_VERSION VERSION_LESS 3.27)
     set(YOSYS_CMAKE_COMMAND "${_TRIDENT_CMAKE}")
     set(YOSYS_EXTRA_DEPENDS)
-    set(YOSYS_PATCH_COMMAND
-        "${_TRIDENT_CMAKE}"
+    list(APPEND YOSYS_PATCH_COMMAND
+        COMMAND "${_TRIDENT_CMAKE}"
             -DYOSYS_SOURCE_DIR=<SOURCE_DIR>
             -P "${CMAKE_CURRENT_LIST_DIR}/PatchYosysCMakeForWindows.cmake"
     )
