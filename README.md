@@ -44,6 +44,17 @@ Build downloaded tools:
 cmake --build build --target trident_tools
 ```
 
+On Windows, configure from MSYS Bash with `-G "Unix Makefiles"`.
+CppHDL uses the existing `.conda/Library` LLVM/Clang packages and is included
+when `TRIDENT_BUILD_CPPHDL=ON` (the default). LLVM source fetching remains off.
+The compiler must be link-compatible with the installed LLVM/Clang libraries;
+successful package detection alone does not establish that compatibility.
+
+When configuring the patched cpphdl source directly, set
+`CPPHDL_LOCAL_CONDA_PREFIX` to the absolute path of Trident's `.conda` or
+`.conda/Library` directory. Both layouts are recognized. Keep
+`CPPHDL_FETCH_LLVM=OFF` to use installed packages.
+
 ## Run
 
 ```sh

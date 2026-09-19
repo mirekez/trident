@@ -72,14 +72,6 @@ include(ExternalProject)
 
 option(TRIDENT_BUILD_CPPHDL "Build cpphdl tool" ON)
 option(TRIDENT_CPPHDL_FETCH_LLVM "Allow cpphdl to download and build a matching LLVM/Clang" OFF)
-if(WIN32 AND TRIDENT_BUILD_CPPHDL AND NOT TRIDENT_CPPHDL_FETCH_LLVM)
-    message(WARNING
-        "Skipping cpphdl on Windows with MinGW because the local .conda LLVM/Clang "
-        "libraries are not link-compatible with this toolchain. Configure with "
-        "-DTRIDENT_CPPHDL_FETCH_LLVM=ON to let cpphdl build a matching LLVM/Clang, "
-        "or provide a MinGW-built LLVM/Clang package.")
-    set(TRIDENT_BUILD_CPPHDL OFF)
-endif()
 
 if(WIN32)
     set(_TRIDENT_CMAKE "${_TRIDENT_CONDA_BIN}/cmake.exe")
